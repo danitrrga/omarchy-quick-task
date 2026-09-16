@@ -155,3 +155,31 @@ def test_fresh_binding_file_gets_one_managed_binding_and_remains_idempotent(tmp_
     assert bindings.count(NEW_BINDING) == 1
     assert bindings.count(">>> quick-task (managed)") == 1
     assert bindings.count("<<< quick-task (managed)") == 1
+
+
+def test_live_reload_uses_the_noninteractive_enable_contract_without_unknown_flags(tmp_path: Path):
+    targets = installation(tmp_path)
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "commands.log"
+    for command in ("omarchy-shell", "omarchy", "hyprctl"):
+        executable = fake_bin / command
+        executable.write_text(
+            "#!/bin/sh\n"
+            f"printf '{command} %s\\n' \"$*\" >> \"$QT_COMMAND_LOG\"\n",
+            encoding="utf-8",
+        )
+        executable.chmod(0o755)
+
+    environment = targets["environment"]
+    environment.pop("QT_SKIP_RELOAD")
+    environment["QT_COMMAND_LOG"] = str(command_log)
+    environment["PATH"] = str(fake_bin) + os.pathsep + environment["PATH"]
+
+    run_deploy(targets)
+
+    assert command_log.read_text(encoding="utf-8").splitlines() == [
+        "omarchy-shell shell rescanPlugins",
+        "omarchy plugin enable danitrrga.quick-task",
+        "hyprctl reload",
+    ]

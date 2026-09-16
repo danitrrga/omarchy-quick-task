@@ -42,6 +42,6 @@ if [[ -n "${QT_SKIP_RELOAD:-}" ]]; then
 fi
 
 omarchy-shell shell rescanPlugins >/dev/null
-omarchy plugin enable danitrrga.quick-task --yes >/dev/null
+omarchy plugin enable danitrrga.quick-task >/dev/null
 hyprctl reload >/dev/null
 log "enabled plugin and reloaded Hyprland"
