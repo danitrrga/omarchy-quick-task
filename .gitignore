@@ -1,0 +1,27 @@
+# --- secrets / env (never commit) ---
+.env
+.env.*
+*.local
+secrets.json
+tokens.json
+
+# --- claude-mem: memory store is centralized in forge/data/memory, never in the project ---
+.claude-mem/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+.codex/
+.superpowers/
+.worktrees/
