@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "danitrrga.quick-task",
+  "name": "Quick Task",
+  "version": "1.0.0",
+  "author": "danitrrga",
+  "description": "Bilingual, keyboard-first Todoist capture for Omarchy",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "QuickTask.qml"
+  }
+}
