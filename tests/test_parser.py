@@ -42,6 +42,31 @@ def test_bilingual_relative_and_weekday_phrases_become_absolute_dates(phrase, ex
     assert result.tokens[0].value == expected
 
 
+@pytest.mark.parametrize(
+    ("phrase", "expected"),
+    [
+        ("mon", "2026-09-21"),
+        ("tue", "2026-09-22"),
+        ("wed", "2026-09-16"),
+        ("thu", "2026-09-17"),
+        ("fri", "2026-09-18"),
+        ("sat", "2026-09-19"),
+        ("sun", "2026-09-20"),
+        ("lun", "2026-09-21"),
+        ("mar", "2026-09-22"),
+        ("mie", "2026-09-16"),
+        ("jue", "2026-09-17"),
+        ("vie", "2026-09-18"),
+        ("sab", "2026-09-19"),
+        ("dom", "2026-09-20"),
+    ],
+)
+def test_short_weekday_forms_cover_the_full_week_in_both_languages(phrase, expected):
+    result = parse_quick_text(f"Plan {phrase}", now=NOW)
+
+    assert result.normalized == f"Plan {expected}"
+
+
 @pytest.mark.parametrize("phrase", ["21st", "21º", "el 21"])
 def test_day_of_month_forms_resolve_in_the_current_month_when_still_ahead(phrase):
     result = parse_quick_text(f"Renew passport {phrase}", now=NOW)
@@ -89,6 +114,44 @@ def test_plain_numbers_are_not_mistaken_for_dates():
 
     assert result.normalized == "Buy 21 screws"
     assert result.tokens == ()
+
+
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        ("Call Jimmy @tomorrow", "label"),
+        ("Prepare slides %mon", "label"),
+        ("Review #viernes", "project"),
+        ("Ask +monday", "assignee"),
+        ("File /mon", "section"),
+        ("Nudge !tomorrow", "reminder"),
+        ("Ship {mon}", "deadline"),
+        ("Ship {due friday}", "deadline"),
+    ],
+)
+def test_date_words_inside_todoist_metadata_are_not_recognized_twice(text, kind):
+    result = parse_quick_text(text, now=NOW)
+
+    assert result.normalized == text
+    assert [token.kind for token in result.tokens] == [kind]
+
+
+def test_todoist_metadata_is_previewed_once_in_sentence_order():
+    result = parse_quick_text(
+        "Review el 21 #Personal /Admin %paper +Jimmy !30min p1 {Sep 30}",
+        now=NOW,
+    )
+
+    assert [(token.kind, token.text) for token in result.tokens] == [
+        ("date", "el 21"),
+        ("project", "#Personal"),
+        ("section", "/Admin"),
+        ("label", "%paper"),
+        ("assignee", "+Jimmy"),
+        ("reminder", "!30min"),
+        ("priority", "p1"),
+        ("deadline", "{Sep 30}"),
+    ]
 
 
 def test_multiple_date_phrases_do_not_overlap_or_duplicate_tokens():

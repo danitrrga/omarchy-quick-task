@@ -62,6 +62,11 @@ _WEEKDAY_PATTERN = "|".join(
     re.escape(alias) for alias in sorted(_WEEKDAY_BY_ALIAS, key=len, reverse=True)
 )
 
+# A date word immediately following Todoist metadata sigils belongs to that
+# metadata. Without this guard, `@tomorrow` becomes both a legacy label and a
+# due date, and the overlay presents two incompatible readings of one span.
+_DATE_START = r"(?<![@%#+/!{])\b"
+
 _RELATIVE_DAYS = {
     "today": 0,
     "tod": 0,
@@ -80,6 +85,16 @@ _SPANISH_TIME = re.compile(
 _CLOCK_TIME = re.compile(
     r"^\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<meridiem>am|pm)\b",
     re.IGNORECASE,
+)
+
+_METADATA_PATTERNS = (
+    ("project", "Project", re.compile(r"(?<!\S)#[^\s]+")),
+    ("section", "Section", re.compile(r"(?<!\S)/[^\s]+")),
+    ("label", "Label", re.compile(r"(?<!\S)[%@][^\s]+")),
+    ("assignee", "Assignee", re.compile(r"(?<!\S)\+[^\s]+")),
+    ("reminder", "Reminder", re.compile(r"(?<!\S)![^\s]+")),
+    ("priority", "Priority", re.compile(r"(?<!\S)p[1-4](?!\S)", re.IGNORECASE)),
+    ("deadline", "Deadline", re.compile(r"(?<!\S)\{[^}]+\}")),
 )
 
 
@@ -163,6 +178,26 @@ def _token_id(start: int, end: int, raw: str) -> str:
     return f"date:{start}:{end}:{stable_text}"
 
 
+def _metadata_tokens(text: str) -> list[ParsedToken]:
+    tokens: list[ParsedToken] = []
+    for kind, title, pattern in _METADATA_PATTERNS:
+        for match in pattern.finditer(text):
+            raw = match.group(0)
+            stable_text = re.sub(r"\s+", "_", _fold(raw).strip())
+            tokens.append(
+                ParsedToken(
+                    id=f"{kind}:{match.start()}:{match.end()}:{stable_text}",
+                    kind=kind,
+                    text=raw,
+                    value=raw,
+                    label=f"{title}  {raw}",
+                    start=match.start(),
+                    end=match.end(),
+                )
+            )
+    return sorted(tokens, key=lambda token: (token.start, token.end))
+
+
 def _label(due: date, hour: int | None, minute: int | None) -> str:
     day = f"{due.day}"
     base = f"{due.strftime('%a')} {day} {due.strftime('%b')}"
@@ -185,7 +220,7 @@ def parse_quick_text(
     selected: list[_Candidate] = []
 
     relative_pattern = re.compile(
-        r"\b(?:" + "|".join(
+        _DATE_START + r"(?:" + "|".join(
             re.escape(value) for value in sorted(_RELATIVE_DAYS, key=len, reverse=True)
         ) + r")\b",
         re.IGNORECASE,
@@ -198,7 +233,7 @@ def parse_quick_text(
     )
 
     qualified_weekday = re.compile(
-        rf"\b(?P<qualifier>this|este|esta|next|el\s+proximo|la\s+proxima|proximo|proxima)\s+"
+        rf"{_DATE_START}(?P<qualifier>this|este|esta|next|el\s+proximo|la\s+proxima|proximo|proxima)\s+"
         rf"(?P<weekday>{_WEEKDAY_PATTERN})\b",
         re.IGNORECASE,
     )
@@ -214,7 +249,9 @@ def parse_quick_text(
         ),
     )
 
-    bare_weekday = re.compile(rf"\b(?P<weekday>{_WEEKDAY_PATTERN})\b", re.IGNORECASE)
+    bare_weekday = re.compile(
+        rf"{_DATE_START}(?P<weekday>{_WEEKDAY_PATTERN})\b", re.IGNORECASE
+    )
     _add_matches(
         selected,
         bare_weekday,
@@ -225,7 +262,10 @@ def parse_quick_text(
     )
 
     # NFKD folds the Spanish ordinal indicators º/ª to o/a before matching.
-    ordinal = re.compile(r"\b(?P<day>[1-9]|[12]\d|3[01])(?:st|nd|rd|th|o|a)\b", re.IGNORECASE)
+    ordinal = re.compile(
+        rf"{_DATE_START}(?P<day>[1-9]|[12]\d|3[01])(?:st|nd|rd|th|o|a)\b",
+        re.IGNORECASE,
+    )
     _add_matches(
         selected,
         ordinal,
@@ -233,13 +273,25 @@ def parse_quick_text(
         lambda match: _future_day_of_month(today, int(match.group("day"))),
     )
 
-    spanish_day = re.compile(r"\bel\s+(?P<day>[1-9]|[12]\d|3[01])\b", re.IGNORECASE)
+    spanish_day = re.compile(
+        rf"{_DATE_START}el\s+(?P<day>[1-9]|[12]\d|3[01])\b", re.IGNORECASE
+    )
     _add_matches(
         selected,
         spanish_day,
         folded,
         lambda match: _future_day_of_month(today, int(match.group("day"))),
     )
+
+    metadata_tokens = _metadata_tokens(text)
+    selected = [
+        candidate
+        for candidate in selected
+        if not any(
+            candidate.start < token.end and token.start < candidate.end
+            for token in metadata_tokens
+        )
+    ]
 
     tokens: list[ParsedToken] = []
     replacements: list[tuple[int, int, str]] = []
@@ -279,4 +331,6 @@ def parse_quick_text(
     for start, end, replacement in reversed(replacements):
         normalized = normalized[:start] + replacement + normalized[end:]
 
+    tokens.extend(metadata_tokens)
+    tokens.sort(key=lambda token: (token.start, token.end))
     return ParseResult(original=text, normalized=normalized, tokens=tuple(tokens))
