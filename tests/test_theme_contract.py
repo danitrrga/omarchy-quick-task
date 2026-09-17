@@ -48,7 +48,8 @@ def test_font_and_spacing_follow_the_live_shell_scale():
     assert "Style.font.body" in source
     assert "Style.spacing.panelPadding" in source
     assert "Style.spacing.controlPaddingX" in source
-    assert source.count("Style.space(") >= 8
+    assert source.count("Style.space(") >= 4
+    assert source.count("Style.spacing.") >= 12
     assert not re.search(r'font\.family:\s*["\']', source)
 
 
@@ -57,7 +58,9 @@ def test_every_drawn_corner_uses_the_single_live_theme_radius():
     radius_assignments = re.findall(r"\bradius\s*:\s*([^\n}]+)", source)
 
     assert "readonly property int cornerRadius: Style.cornerRadius" in source
-    assert len(radius_assignments) >= 5
+    # The quiet capture surface deliberately draws very few shapes; every
+    # corner that remains must still follow the live theme.
+    assert len(radius_assignments) >= 2
     assert all("root.cornerRadius" in assignment for assignment in radius_assignments)
     assert not re.search(r"\bradius\s*:\s*\d", source)
 

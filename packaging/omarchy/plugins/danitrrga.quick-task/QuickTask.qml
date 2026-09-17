@@ -24,17 +24,18 @@ Item {
   property var ignoredTokenIds: []
 
   readonly property string helperPath: Quickshell.env("HOME") + "/.local/bin/quick-task"
-  readonly property string omarchyPath: Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy"
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy"
   readonly property string fontFamily: Style.font.menuFamily
   readonly property int cornerRadius: Style.cornerRadius
   readonly property int contentPadding: Style.spacing.panelPadding
+  readonly property bool hasDraft: root.draft.trim().length > 0
   readonly property color background: Color.menu.background
   readonly property color foreground: Color.menu.text
   readonly property color border: Color.menu.border
   readonly property color scrim: Color.menu.scrim
   readonly property var borderSpec: Border.surfaceSpec(
     "menu", "border", root.border, Math.max(Style.spacing.hairline, Style.space(1)))
-  readonly property int cardWidth: Math.min(Style.space(680), panel.width - Style.gapsOut * 2)
+  readonly property int cardWidth: Math.min(Style.space(640), panel.width - Style.gapsOut * 2)
   readonly property int cardHeight: Math.min(
     contentColumn.implicitHeight + root.contentPadding * 2,
     panel.height - Style.gapsOut * 2)
@@ -96,7 +97,9 @@ Item {
   function handleParseResult(output) {
     var parsed
     try { parsed = JSON.parse(output || "") } catch (e) { return }
-    if (parsed && parsed.ok && parsed.result && Array.isArray(parsed.result.tokens))
+    if (parsed && parsed.ok && parsed.result
+        && String(parsed.result.original) === root.draft
+        && Array.isArray(parsed.result.tokens))
       root.tokens = parsed.result.tokens
   }
 
@@ -146,31 +149,7 @@ Item {
     root.requestParse()
   }
 
-  function metadataTokens() {
-    var found = []
-    var rules = [
-      { kind: "project", pattern: /(^|\s)(#[^\s]+)/g, label: "Project" },
-      { kind: "label", pattern: /(^|\s)([%@][^\s]+)/g, label: "Label" },
-      { kind: "priority", pattern: /(^|\s)(p[1-4])\b/gi, label: "Priority" },
-      { kind: "assignee", pattern: /(^|\s)(\+[^\s]+)/g, label: "Assignee" },
-      { kind: "deadline", pattern: /(^|\s)(\{[^}]+\})/g, label: "Deadline" }
-    ]
-    for (var i = 0; i < rules.length; i++) {
-      rules[i].pattern.lastIndex = 0
-      var match
-      while ((match = rules[i].pattern.exec(root.draft)) !== null) {
-        found.push({
-          id: rules[i].kind + ":" + match.index,
-          kind: rules[i].kind,
-          text: match[2],
-          label: rules[i].label + "  " + match[2]
-        })
-      }
-    }
-    return found
-  }
-
-  readonly property var visibleTokens: root.tokens.concat(root.metadataTokens())
+  readonly property var visibleTokens: root.tokens
 
   Timer {
     id: parseTimer
@@ -246,7 +225,8 @@ Item {
       id: card
       width: root.cardWidth
       height: root.cardHeight
-      anchors.centerIn: parent
+      anchors.horizontalCenter: parent.horizontalCenter
+      y: Math.max(Style.gapsOut, Math.round((parent.height - height) * 0.28))
       color: root.background
       borderSpec: root.borderSpec
       radius: root.cornerRadius
@@ -266,7 +246,7 @@ Item {
 
         Item {
           width: parent.width
-          height: Math.max(Style.space(58), keyCatcher.implicitHeight)
+          height: Math.max(Style.space(46), keyCatcher.implicitHeight)
 
           QQC.TextField {
             id: keyCatcher
@@ -280,25 +260,18 @@ Item {
             selectedTextColor: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.heading
-            leftPadding: Style.spacing.controlPaddingX
-            rightPadding: Style.spacing.controlPaddingX
-            topPadding: Style.spacing.inputPaddingY
-            bottomPadding: Style.spacing.inputPaddingY
+            font.weight: Font.Medium
+            leftPadding: Style.spacing.xs
+            rightPadding: Style.spacing.xs
+            topPadding: 0
+            bottomPadding: 0
             selectByMouse: true
-
-            background: BorderSurface {
-              color: Style.controlFill(
-                keyCatcher.activeFocus, keyCatcher.hovered, root.foreground, Color.accent)
-              borderSpec: Border.controlSpec(
-                keyCatcher.activeFocus ? "focus" : (keyCatcher.hovered ? "hover-cursor" : "normal"),
-                root.foreground,
-                Color.accent)
-              radius: root.cornerRadius
-            }
+            background: Item {}
 
             onTextEdited: {
               root.ignoredTokenIds = []
               root.draft = text
+              root.tokens = []
               root.errorMessage = ""
               parseTimer.restart()
             }
@@ -320,29 +293,40 @@ Item {
           }
         }
 
-        Flow {
-          id: tokenFlow
+        Grid {
+          id: tokenGrid
           width: parent.width
-          height: visible ? childrenRect.height : 0
-          spacing: Style.spacing.sm
           visible: root.visibleTokens.length > 0
+          columns: Math.max(1, Math.min(4, root.visibleTokens.length))
+          columnSpacing: Style.spacing.sm
+          rowSpacing: Style.spacing.sm
 
           Repeater {
             model: root.visibleTokens
 
             delegate: BorderSurface {
               required property var modelData
-              width: tokenLabel.implicitWidth + Style.spacing.controlPaddingX * 2
+              readonly property real columnWidth: (
+                tokenGrid.width - tokenGrid.columnSpacing * (tokenGrid.columns - 1)
+              ) / tokenGrid.columns
+              width: Math.min(
+                tokenLabel.implicitWidth + Style.spacing.controlPaddingX * 2,
+                columnWidth)
               height: Style.spacing.controlHeight
               radius: root.cornerRadius
-              color: Color.menu.selectedBackground
-              borderSpec: Border.controlSpec("selected", root.foreground, Color.accent)
+              color: modelData.kind === "date"
+                ? Color.menu.selectedBackground
+                : Style.normalFillFor(root.foreground, Color.accent)
+              borderSpec: Border.none()
 
               Text {
                 id: tokenLabel
                 anchors.centerIn: parent
+                width: parent.width - Style.spacing.controlPaddingX * 2
                 text: modelData.label
                 textFormat: Text.PlainText
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
                 color: modelData.kind === "date" ? Color.menu.selectedText : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -387,28 +371,22 @@ Item {
           }
           onTextEdited: root.description = text
           onAccepted: root.submit()
-          Keys.onEscapePressed: {
-            root.showDescription = false
-            keyCatcher.forceActiveFocus()
-          }
+          Keys.onEscapePressed: root.dismiss()
         }
 
-        BorderSurface {
+        Item {
           width: parent.width
-          height: root.showSyntax ? syntaxText.implicitHeight + Style.space(18) : 0
+          height: root.showSyntax ? syntaxText.implicitHeight + Style.space(10) : 0
           visible: root.showSyntax
-          radius: root.cornerRadius
-          color: Color.menu.selectedBackground
-          borderSpec: Border.controlSpec("normal", root.foreground, Color.accent)
 
           Text {
             id: syntaxText
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Style.spacing.controlPaddingX
-            anchors.rightMargin: Style.spacing.controlPaddingX
-            text: "# Project   / Section   % Label   p1 Priority   + Assignee   ! Reminder   {date} Deadline"
+            anchors.leftMargin: Style.spacing.xs
+            anchors.rightMargin: Style.spacing.xs
+            text: "# Project  ·  / Section  ·  % Label  ·  p1 Priority  ·  + Assignee  ·  ! Reminder  ·  {date} Deadline"
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: Color.muted
@@ -417,21 +395,18 @@ Item {
           }
         }
 
-        BorderSurface {
+        Item {
           width: parent.width
-          height: root.errorMessage ? errorText.implicitHeight + Style.space(18) : 0
+          height: root.errorMessage ? errorText.implicitHeight + Style.space(10) : 0
           visible: root.errorMessage.length > 0
-          radius: root.cornerRadius
-          color: Color.menu.selectedBackground
-          borderSpec: Border.controlSpec("normal", Color.urgent, Color.urgent)
 
           Text {
             id: errorText
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Style.spacing.controlPaddingX
-            anchors.rightMargin: Style.spacing.controlPaddingX
+            anchors.leftMargin: Style.spacing.xs
+            anchors.rightMargin: Style.spacing.xs
             text: root.errorMessage
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
@@ -441,106 +416,60 @@ Item {
           }
         }
 
-        Row {
+        Item {
+          id: actionRow
           width: parent.width
-          height: Style.space(34)
-          spacing: Style.spacing.sm
+          height: visible ? Math.max(leftActions.implicitHeight, addButton.implicitHeight) : 0
+          visible: root.hasDraft || root.showDescription || root.showSyntax || root.errorMessage.length > 0
 
-          BorderSurface {
-            width: descriptionButtonText.implicitWidth + Style.spacing.controlPaddingX * 2
-            height: parent.height
-            radius: root.cornerRadius
-            color: descriptionMouse.containsMouse
-              ? Color.menu.selectedBackground : root.background
-            borderSpec: Border.controlSpec(
-              descriptionMouse.containsMouse ? "hover-cursor" : "normal",
-              root.foreground,
-              Color.accent)
-            Text {
-              id: descriptionButtonText
-              anchors.centerIn: parent
-              text: "↓  Description"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-            MouseArea {
-              id: descriptionMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
+          Row {
+            id: leftActions
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.spacing.xs
+
+            Button {
+              visible: root.hasDraft
+              text: "Description"
+              foreground: root.foreground
+              background: "transparent"
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              horizontalPadding: Style.spacing.sm
+              verticalPadding: Style.spacing.sm
               onClicked: {
                 root.showDescription = true
                 descriptionField.forceActiveFocus()
               }
             }
-          }
 
-          BorderSurface {
-            width: syntaxButtonText.implicitWidth + Style.spacing.controlPaddingX * 2
-            height: parent.height
-            radius: root.cornerRadius
-            color: syntaxMouse.containsMouse
-              ? Color.menu.selectedBackground : root.background
-            borderSpec: Border.controlSpec(
-              syntaxMouse.containsMouse ? "hover-cursor" : "normal",
-              root.foreground,
-              Color.accent)
-            Text {
-              id: syntaxButtonText
-              anchors.centerIn: parent
-              text: "Shift + ↓  Syntax"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-            MouseArea {
-              id: syntaxMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
+            Button {
+              visible: root.hasDraft
+              text: root.showSyntax ? "Hide syntax" : "Syntax"
+              foreground: root.foreground
+              background: "transparent"
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              horizontalPadding: Style.spacing.sm
+              verticalPadding: Style.spacing.sm
               onClicked: root.showSyntax = !root.showSyntax
             }
           }
 
-          Item { width: Math.max(0, parent.width - descriptionButtonText.implicitWidth
-            - syntaxButtonText.implicitWidth - addButton.width
-            - Style.spacing.controlPaddingX * 4 - parent.spacing * 3); height: 1 }
-
-          BorderSurface {
+          Button {
             id: addButton
-            width: addButtonText.implicitWidth + Style.spacing.controlPaddingX * 2
-            height: parent.height
-            radius: root.cornerRadius
-            color: Color.menu.selectedBackground
-            borderSpec: Border.controlSpec("selected", root.foreground, Color.accent)
-
-            Rectangle {
-              width: Style.space(6)
-              height: Style.space(6)
-              radius: root.cornerRadius
-              color: root.submitting ? Color.accent : Color.menu.selectedText
-              anchors.left: parent.left
-              anchors.leftMargin: Style.spacing.controlPaddingX
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            Text {
-              id: addButtonText
-              anchors.centerIn: parent
-              text: root.submitting ? "Adding…" : "Enter  Add"
-              color: Color.menu.selectedText
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              font.weight: Font.DemiBold
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              enabled: !root.submitting
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.submit()
-            }
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.hasDraft
+            enabled: !root.submitting
+            text: root.submitting ? "Adding…" : "Add task"
+            foreground: Color.menu.selectedText
+            background: Color.menu.selectedBackground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.body
+            horizontalPadding: Style.spacing.controlPaddingX
+            verticalPadding: Style.spacing.controlPaddingY
+            onClicked: root.submit()
           }
         }
       }
