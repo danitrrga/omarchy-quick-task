@@ -106,6 +106,33 @@ def test_deploy_installs_a_working_helper_and_native_plugin(tmp_path: Path):
     assert json.loads(result.stdout)["result"]["normalized"] == "Entregar 2026-09-21"
 
 
+def test_second_deploy_does_not_rewrite_unchanged_plugin_files(tmp_path: Path):
+    targets = installation(tmp_path)
+    run_deploy(targets)
+    qml = targets["plugin_dir"] / "QuickTask.qml"
+    manifest = targets["plugin_dir"] / "manifest.json"
+    first_mtimes = (qml.stat().st_mtime_ns, manifest.stat().st_mtime_ns)
+
+    run_deploy(targets)
+
+    assert (qml.stat().st_mtime_ns, manifest.stat().st_mtime_ns) == first_mtimes
+
+
+def test_plugin_entrypoint_is_installed_before_the_manifest_exposes_it():
+    source = DEPLOY.read_text(encoding="utf-8")
+    qml_install = source.index('"$QT_PLUGIN_DIR/QuickTask.qml"')
+    manifest_install = source.index('"$QT_PLUGIN_DIR/manifest.json"')
+
+    assert qml_install < manifest_install
+
+
+def test_atomic_staging_lives_outside_the_watched_plugin_directory():
+    source = DEPLOY.read_text(encoding="utf-8")
+
+    assert 'mktemp "$QT_SHARE_DIR/' in source
+    assert 'mktemp "${target}' not in source
+
+
 def test_deploy_migrates_config_once_preserves_user_text_and_makes_backups(tmp_path: Path):
     targets = installation(tmp_path)
 

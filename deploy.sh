@@ -14,17 +14,31 @@ umask 077
 
 log() { printf '  %s\n' "$*"; }
 
+install_file() {
+  local mode="$1" source="$2" target="$3" temporary
+  if [[ -f "$target" ]] && cmp -s "$source" "$target"; then
+    chmod "$mode" "$target"
+    return
+  fi
+  # Stage outside the watched plugin tree. Creating a temporary beside the
+  # destination makes Quickshell reload once for every write before the final
+  # rename; this produces one complete-file event instead.
+  temporary="$(mktemp "$QT_SHARE_DIR/.install.XXXXXX")"
+  install -m"$mode" "$source" "$temporary"
+  mv -f "$temporary" "$target"
+}
+
 install -d "$QT_BIN_DIR" "$QT_SHARE_DIR/quick_task" "$QT_PLUGIN_DIR"
-install -m755 "$SCRIPT_DIR/bin/quick-task" "$QT_BIN_DIR/quick-task"
+install_file 755 "$SCRIPT_DIR/bin/quick-task" "$QT_BIN_DIR/quick-task"
 for source in "$SCRIPT_DIR"/src/quick_task/*.py; do
-  install -m644 "$source" "$QT_SHARE_DIR/quick_task/$(basename "$source")"
+  install_file 644 "$source" "$QT_SHARE_DIR/quick_task/$(basename "$source")"
 done
-install -m644 \
-  "$SCRIPT_DIR/packaging/omarchy/plugins/danitrrga.quick-task/manifest.json" \
-  "$QT_PLUGIN_DIR/manifest.json"
-install -m644 \
+install_file 644 \
   "$SCRIPT_DIR/packaging/omarchy/plugins/danitrrga.quick-task/QuickTask.qml" \
   "$QT_PLUGIN_DIR/QuickTask.qml"
+install_file 644 \
+  "$SCRIPT_DIR/packaging/omarchy/plugins/danitrrga.quick-task/manifest.json" \
+  "$QT_PLUGIN_DIR/manifest.json"
 log "installed helper and Omarchy plugin"
 
 python3 "$SCRIPT_DIR/scripts/migrate_config.py" \
