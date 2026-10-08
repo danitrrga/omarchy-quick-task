@@ -94,6 +94,7 @@ def test_deploy_installs_a_working_helper_and_native_plugin(tmp_path: Path):
     assert (targets["share_dir"] / "quick_task" / "todoist.py").is_file()
     assert (targets["plugin_dir"] / "manifest.json").is_file()
     assert (targets["plugin_dir"] / "QuickTask.qml").is_file()
+    assert (targets["plugin_dir"] / "QuickTaskLogic.js").is_file()
 
     result = subprocess.run(
         [str(helper), "parse"],

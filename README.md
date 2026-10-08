@@ -18,6 +18,8 @@ Llamar a Marta el 21 #Personal
 
 Recognized dates are previewed before submission. Select a date chip to keep that phrase as literal task text for the current draft.
 
+The recognized span is also marked directly inside the task field. Only the last value of each detail type is active; earlier dates, projects, labels, priorities, assignees, reminders, sections, and deadlines remain literal text. With the cursor immediately after a marked span, press `Backspace` once to make every current value of that type literal without deleting visible text. A second `Backspace` edits normally.
+
 Todoist’s remaining Quick Add syntax passes through unchanged:
 
 | Detail | Syntax |
@@ -68,6 +70,6 @@ QML_IMPORT_PATH=/usr/share/omarchy/shell qmllint \
 bash -n deploy.sh
 ```
 
-The suite covers bilingual parsing, the Todoist request contract, secret redaction, QML keyboard behavior, live theme tokens, theme-owned corner geometry, and run-twice installer safety.
+The suite covers bilingual parsing, last-value precedence, literal syntax protection, the Todoist request contract, secret redaction, QML keyboard behavior, live theme tokens, theme-owned corner geometry, and run-twice installer safety.
 
 The product contract and implementation rationale live in [docs/spec.md](docs/spec.md).

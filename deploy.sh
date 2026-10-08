@@ -34,6 +34,9 @@ for source in "$SCRIPT_DIR"/src/quick_task/*.py; do
   install_file 644 "$source" "$QT_SHARE_DIR/quick_task/$(basename "$source")"
 done
 install_file 644 \
+  "$SCRIPT_DIR/packaging/omarchy/plugins/danitrrga.quick-task/QuickTaskLogic.js" \
+  "$QT_PLUGIN_DIR/QuickTaskLogic.js"
+install_file 644 \
   "$SCRIPT_DIR/packaging/omarchy/plugins/danitrrga.quick-task/QuickTask.qml" \
   "$QT_PLUGIN_DIR/QuickTask.qml"
 install_file 644 \

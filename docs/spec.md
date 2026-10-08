@@ -9,7 +9,7 @@ Quick Task is a resident Omarchy overlay for sending a fully structured task to 
 1. The global binding summons a keep-loaded `danitrrga.quick-task` Omarchy overlay.
 2. Focus starts in the task field. `Enter` adds, `Esc` closes, `Down` reveals and focuses the description field, and `Shift + Down` reveals the syntax reference.
 3. Recognition runs after a short typing debounce. It never blocks input or contacts Todoist.
-4. Recognized details appear as compact chips below the sentence. Selecting a date chip makes that phrase literal for the current draft; editing the sentence clears stale suppressions.
+4. Recognized details appear both as theme-aware inline marks and as compact chips below the sentence. The last occurrence of each detail type wins. With the cursor immediately after an active mark, the first `Backspace` makes every current occurrence of that type literal without deleting visible text; subsequent backspaces edit normally.
 5. During submission, the draft stays visible and the add action shows activity without changing size.
 6. Success dismisses the overlay and sends native Omarchy feedback. Failure keeps the full draft and shows a specific retryable error.
 
@@ -30,6 +30,8 @@ The normalizer supports English and Spanish simultaneously, regardless of the To
 
 Recognized date phrases are replaced with an absolute `YYYY-MM-DD` string before submission. This removes account-language ambiguity while preserving Todoist’s parser for the rest of the sentence.
 
+Only the final occurrence of each detail type is active. Earlier occurrences are protected with an invisible word joiner before submission, so Todoist leaves them in task content instead of parsing them again. Literalizing an active inline mark protects every current occurrence of that type, preventing an older value from being promoted; newly typed syntax can still be recognized normally.
+
 Todoist metadata owns its full recognized span. A date-like label such as `@tomorrow`, project such as `#viernes`, assignee such as `+monday`, or deadline such as `{due friday}` is therefore previewed only as that metadata and never simultaneously as a due date.
 
 The overlay also previews Todoist syntax for `#project`, `/section`, `%label` and legacy `@label`, `p1`–`p4`, `+assignee`, `!reminder`, and `{deadline}`. The description is sent through the API’s `note` field.
@@ -44,9 +46,10 @@ Todoist’s current help describes the Quick Add feature and syntax at <https://
 
 The chosen direction combines the restrained dark surface with the instrument panel’s explicit state. It is quiet enough to feel native, with recognition—not decoration—as the memorable element.
 
-- All colors come from live `Color.menu.*`, `Color.accent`, and `Color.urgent` roles.
+- All colors come from live Omarchy roles. Syntax types use semantic palette tokens (`accent`, selected menu text, popup border, notification countdown, foreground, polkit accent, urgent, and lock active border), so both their inline mark and summary chip adapt with the active theme.
 - All type comes from live `Style.font.menuFamily` and the shell’s font scale.
 - All outer surfaces, inputs, chips, buttons, feedback, and focus shapes use `Style.cornerRadius`; theme radius `0` must produce square geometry everywhere.
+- Inline syntax marks sit behind the native editor, use the parser’s exact source spans, follow horizontal scrolling, and inherit `Style.cornerRadius` without intercepting cursor or selection input.
 - Spacing derives from `Style.space(...)` and `Style.spacing.*`.
 - No literal hex colors, private font names, username paths, blur, gradient, glow, or decorative shadow.
 - The overlay sits near the upper third of the active screen, no wider than roughly 640 shell-scaled pixels, and its height grows only for recognized details, description, syntax help, or errors.

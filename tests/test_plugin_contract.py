@@ -8,6 +8,7 @@ ROOT = Path(__file__).parents[1]
 PLUGIN = ROOT / "packaging" / "omarchy" / "plugins" / "danitrrga.quick-task"
 MANIFEST = PLUGIN / "manifest.json"
 QML = PLUGIN / "QuickTask.qml"
+LOGIC = PLUGIN / "QuickTaskLogic.js"
 
 
 def test_manifest_declares_a_resident_overlay_with_a_real_entrypoint():
@@ -47,7 +48,8 @@ def test_shell_can_inject_its_runtime_path_into_the_plugin():
 def test_keyboard_contract_is_implemented_on_the_real_input_surface():
     source = QML.read_text(encoding="utf-8")
 
-    assert "QQC.TextField" in source
+    input_start = source.index("id: keyCatcher")
+    assert source.rfind("TextInput {", 0, input_start) != -1
     assert "Qt.Key_Escape" in source
     assert "Qt.Key_Return" in source or "onAccepted:" in source
     assert "Qt.Key_Down" in source
@@ -82,7 +84,8 @@ def test_live_recognition_and_submit_states_are_present():
 
     assert "Timer" in source and "parseTimer.restart()" in source
     assert "root.tokens" in source
-    assert "root.ignoredTokenIds" in source
+    assert "QuickTaskLogic.literalizeKind" in source
+    assert "root.recognitions" in source
     assert "root.submitting" in source
     assert "root.errorMessage" in source
     assert "root.draft" in source
@@ -128,7 +131,8 @@ def test_empty_capture_is_one_quiet_field_instead_of_a_debug_form():
     input_surface = source[input_start:input_end]
 
     assert "readonly property bool hasDraft:" in source
-    assert "background: Item {}" in input_surface
+    assert "verticalAlignment: TextInput.AlignVCenter" in input_surface
+    assert 'text: "What needs doing?"' in source
     assert "id: actionRow" in source
     assert "visible: root.hasDraft || root.showDescription || root.showSyntax" in source
     assert "anchors.horizontalCenter: parent.horizontalCenter" in source
@@ -154,3 +158,51 @@ def test_recognition_grid_wraps_without_children_rect_height_bindings():
 
     assert "childrenRect.height" not in source
     assert "columns: Math.max(1, Math.min(4, root.visibleTokens.length))" in grid_surface
+
+
+def test_task_text_marks_the_same_parser_ranges_without_covering_the_editor():
+    source = QML.read_text(encoding="utf-8")
+
+    assert 'import "QuickTaskLogic.js" as QuickTaskLogic' in source
+    assert "id: inlineHighlightLayer" in source
+    assert "model: root.visibleTokens" in source
+    assert "positionToRectangle(modelData.start)" in source
+    assert "positionToRectangle(modelData.end)" in source
+    assert "clip: true" in source
+    assert source.index("id: inlineHighlightLayer") < source.index("id: keyCatcher")
+
+
+def test_task_text_has_a_theme_aware_foreground_underline_for_active_syntax():
+    source = QML.read_text(encoding="utf-8")
+
+    assert "id: inlineUnderlineLayer" in source
+    assert "model: root.visibleTokens" in source
+    assert "color: root.syntaxColor(modelData.kind)" in source
+    assert "root.cornerRadius > 0" in source
+    assert source.index("id: keyCatcher") < source.index("id: inlineUnderlineLayer")
+
+
+def test_syntax_types_use_live_semantic_omarchy_color_roles():
+    source = QML.read_text(encoding="utf-8")
+
+    assert "function syntaxColor(kind)" in source
+    for role in (
+        "Color.accent",
+        "Color.menu.selectedText",
+        "Color.popups.border",
+        "Color.notifications.countdown",
+        "Color.foreground",
+        "Color.polkit.accent",
+        "Color.urgent",
+        "Color.lock.borderActive",
+    ):
+        assert role in source
+
+
+def test_backspace_after_a_marked_range_makes_it_literal_before_deleting_text():
+    source = QML.read_text(encoding="utf-8")
+
+    assert "event.key === Qt.Key_Backspace" in source
+    assert "QuickTaskLogic.tokenEndingAt" in source
+    assert "root.literalizeToken(token)" in source
+    assert "event.accepted = true" in source

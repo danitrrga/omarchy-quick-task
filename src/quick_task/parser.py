@@ -34,12 +34,14 @@ class ParseResult:
     original: str
     normalized: str
     tokens: tuple[ParsedToken, ...]
+    recognitions: tuple[ParsedToken, ...]
 
     def to_dict(self) -> dict[str, object]:
         return {
             "original": self.original,
             "normalized": self.normalized,
             "tokens": [token.to_dict() for token in self.tokens],
+            "recognitions": [token.to_dict() for token in self.recognitions],
         }
 
 
@@ -86,6 +88,8 @@ _CLOCK_TIME = re.compile(
     r"^\s+(?:at\s+)?(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<meridiem>am|pm)\b",
     re.IGNORECASE,
 )
+
+_WORD_JOINER = "\u2060"
 
 _METADATA_PATTERNS = (
     ("project", "Project", re.compile(r"(?<!\S)#[^\s]+")),
@@ -198,6 +202,14 @@ def _metadata_tokens(text: str) -> list[ParsedToken]:
     return sorted(tokens, key=lambda token: (token.start, token.end))
 
 
+def _protect_literal(text: str) -> str:
+    """Break Todoist syntax without changing how the task text looks."""
+
+    if not text:
+        return text
+    return text[0] + _WORD_JOINER + text[1:]
+
+
 def _label(due: date, hour: int | None, minute: int | None) -> str:
     day = f"{due.day}"
     base = f"{due.strftime('%a')} {day} {due.strftime('%b')}"
@@ -293,15 +305,12 @@ def parse_quick_text(
         )
     ]
 
-    tokens: list[ParsedToken] = []
-    replacements: list[tuple[int, int, str]] = []
-    ignored_ids = set(ignored)
+    date_tokens: list[ParsedToken] = []
+    date_replacements: dict[str, str] = {}
     for candidate in sorted(selected, key=lambda item: item.start):
         end, hour, minute = _with_time(text, folded, candidate)
         raw = text[candidate.start:end]
         token_id = _token_id(candidate.start, end, raw)
-        if token_id in ignored_ids:
-            continue
 
         date_value = candidate.due.isoformat()
         value = (
@@ -314,7 +323,7 @@ def parse_quick_text(
             if hour is not None and minute is not None
             else date_value
         )
-        tokens.append(
+        date_tokens.append(
             ParsedToken(
                 id=token_id,
                 kind="date",
@@ -325,12 +334,36 @@ def parse_quick_text(
                 end=end,
             )
         )
-        replacements.append((candidate.start, end, replacement))
+        date_replacements[token_id] = replacement
+
+    all_tokens = sorted(date_tokens + metadata_tokens, key=lambda token: (token.start, token.end))
+    last_by_kind: dict[str, ParsedToken] = {}
+    for token in all_tokens:
+        last_by_kind[token.kind] = token
+
+    ignored_ids = set(ignored)
+    active_tokens = [
+        token
+        for token in all_tokens
+        if last_by_kind[token.kind].id == token.id and token.id not in ignored_ids
+    ]
+    active_ids = {token.id for token in active_tokens}
+
+    replacements: list[tuple[int, int, str]] = []
+    for token in all_tokens:
+        if token.id in active_ids:
+            if token.kind == "date":
+                replacements.append((token.start, token.end, date_replacements[token.id]))
+            continue
+        replacements.append((token.start, token.end, _protect_literal(token.text)))
 
     normalized = text
     for start, end, replacement in reversed(replacements):
         normalized = normalized[:start] + replacement + normalized[end:]
 
-    tokens.extend(metadata_tokens)
-    tokens.sort(key=lambda token: (token.start, token.end))
-    return ParseResult(original=text, normalized=normalized, tokens=tuple(tokens))
+    return ParseResult(
+        original=text,
+        normalized=normalized,
+        tokens=tuple(active_tokens),
+        recognitions=tuple(all_tokens),
+    )

@@ -98,6 +98,7 @@ def test_spanish_time_next_to_a_date_is_normalized_without_eating_task_metadata(
 
 
 def test_an_ignored_recognition_stays_literal_for_the_current_draft():
+    word_joiner = "\u2060"
     first = parse_quick_text("Create monthly report mon", now=NOW)
     ignored_id = first.tokens[0].id
 
@@ -105,7 +106,7 @@ def test_an_ignored_recognition_stays_literal_for_the_current_draft():
         "Create monthly report mon", now=NOW, ignored=(ignored_id,)
     )
 
-    assert second.normalized == "Create monthly report mon"
+    assert second.normalized == f"Create monthly report m{word_joiner}on"
     assert second.tokens == ()
 
 
@@ -154,14 +155,59 @@ def test_todoist_metadata_is_previewed_once_in_sentence_order():
     ]
 
 
-def test_multiple_date_phrases_do_not_overlap_or_duplicate_tokens():
+def test_only_the_last_value_of_each_kind_controls_submission():
+    word_joiner = "\u2060"
     result = parse_quick_text("Review tomorrow and ship fri", now=NOW)
 
-    assert result.normalized == "Review 2026-09-17 and ship 2026-09-18"
-    assert [(token.text, token.value) for token in result.tokens] == [
-        ("tomorrow", "2026-09-17"),
-        ("fri", "2026-09-18"),
+    assert result.normalized == f"Review t{word_joiner}omorrow and ship 2026-09-18"
+    assert [(token.text, token.value) for token in result.tokens] == [("fri", "2026-09-18")]
+    assert [(token.kind, token.text) for token in result.recognitions] == [
+        ("date", "tomorrow"),
+        ("date", "fri"),
     ]
+
+
+def test_last_value_wins_for_every_todoist_metadata_kind():
+    word_joiner = "\u2060"
+    result = parse_quick_text(
+        "Review #Old #New /First /Last %one @two +Ana +Bob "
+        "!09:00 !10:00 p3 p1 {Sep 20} {Sep 30}",
+        now=NOW,
+    )
+
+    assert result.normalized == (
+        f"Review #{word_joiner}Old #New /{word_joiner}First /Last "
+        f"%{word_joiner}one @two +{word_joiner}Ana +Bob "
+        f"!{word_joiner}09:00 !10:00 p{word_joiner}3 p1 "
+        f"{{{word_joiner}Sep 20}} {{Sep 30}}"
+    )
+    assert [(token.kind, token.text) for token in result.tokens] == [
+        ("project", "#New"),
+        ("section", "/Last"),
+        ("label", "@two"),
+        ("assignee", "+Bob"),
+        ("reminder", "!10:00"),
+        ("priority", "p1"),
+        ("deadline", "{Sep 30}"),
+    ]
+
+
+def test_ignoring_the_last_value_makes_the_whole_kind_literal_without_promoting_an_older_value():
+    word_joiner = "\u2060"
+    first = parse_quick_text("Review tomorrow then fri p3 p1", now=NOW)
+    ignored = tuple(token.id for token in first.tokens)
+
+    second = parse_quick_text(
+        "Review tomorrow then fri p3 p1",
+        now=NOW,
+        ignored=ignored,
+    )
+
+    assert second.tokens == ()
+    assert second.normalized == (
+        f"Review t{word_joiner}omorrow then f{word_joiner}ri "
+        f"p{word_joiner}3 p{word_joiner}1"
+    )
 
 
 def test_result_serializes_to_the_cli_contract():
@@ -171,6 +217,17 @@ def test_result_serializes_to_the_cli_contract():
         "original": "Call Marta el 21",
         "normalized": "Call Marta 2026-09-21",
         "tokens": [
+            {
+                "id": result.tokens[0].id,
+                "kind": "date",
+                "text": "el 21",
+                "value": "2026-09-21",
+                "label": "Mon 21 Sep",
+                "start": 11,
+                "end": 16,
+            }
+        ],
+        "recognitions": [
             {
                 "id": result.tokens[0].id,
                 "kind": "date",

@@ -37,7 +37,12 @@ def test_parse_command_accepts_an_empty_draft_for_the_overlay_empty_state():
     assert code == 0
     assert output == {
         "ok": True,
-        "result": {"original": "", "normalized": "", "tokens": []},
+        "result": {
+            "original": "",
+            "normalized": "",
+            "tokens": [],
+            "recognitions": [],
+        },
     }
 
 
@@ -82,6 +87,7 @@ def test_add_command_normalizes_dates_and_forwards_description():
             "original": "Call Marta el 21",
             "normalized": "Call Marta 2026-09-21",
             "tokens": output["parsed"]["tokens"],
+            "recognitions": output["parsed"]["recognitions"],
         },
     }
 
