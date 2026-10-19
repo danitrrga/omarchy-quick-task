@@ -1,75 +1,122 @@
 # Quick Task
 
-Quick Task is a resident Omarchy overlay for capturing Todoist tasks without leaving the current workspace. It replaces the old terminal popup with a native Quickshell surface that inherits the live Omarchy font, colors, spacing, and corner radius.
+![Quick Task: type a task like a sentence and Todoist's projects, sections, labels and dates are read out of it](docs/banner.png)
 
-Press `Super + Shift + ;`, type, and press `Enter`. `Esc` closes the overlay, `Down` opens the description field, and `Shift + Down` shows the inline syntax guide.
+Capture a Todoist task from anywhere in Omarchy without leaving what you are doing. Press a key, type a sentence, press `Enter`. Dates, projects, sections, labels and priority are read out of the sentence as you type, in English and Spanish, and your own projects, sections and labels autocomplete.
 
-## Recognition
+![The overlay with a sentence typed: each part is coloured and the line below says how it was read](docs/screenshots/ready.png)
 
-English and Spanish date shorthand work in the same sentence, independent of the Todoist account language:
+Add-only: it creates tasks and never reads or changes the ones you have.
 
-```text
-Send revised deck mon 9am #Work p1
-Entregar propuesta lun #Trabajo
-Preparar la demo este viernes a las 9
-Renew passport 21st
-Llamar a Marta el 21 #Personal
-```
+## What it does
 
-Recognized dates are previewed before submission. Select a date chip to keep that phrase as literal task text for the current draft.
+- **Reads the sentence.** `tomorrow 9am`, `tmr`, `31 oct`, `31 de octubre`, `fri`, `lunes a las 9` become a date; `#Work`, `/Planning`, `@waiting` and `p2` become a project, section, label and priority. What was understood is shown in colour, with one quiet line under the sentence saying it in words.
+- **Autocompletes from your account.** `#` lists your projects, `/` the sections of the project before it, `%` or `@` your labels, `+` that project's collaborators. `Enter` or `Tab` picks, the arrows move, `Esc` closes the list.
+- **Never in the way.** The window opens on one field. Everything else appears once there is something to show, and the Todoist data is cached so it opens instantly.
+- **Takes the theme.** Colours, font, spacing and corner radius come from the live Omarchy theme.
 
-The recognized span is also marked directly inside the task field. Only the last value of each detail type is active; earlier dates, projects, labels, priorities, assignees, reminders, sections, and deadlines remain literal text. With the cursor immediately after a marked span, press `Backspace` once to make every current value of that type literal without deleting visible text. A second `Backspace` edits normally.
+![Typing # opens a list of your projects with their section counts](docs/screenshots/picker.png)
 
-Todoist’s remaining Quick Add syntax passes through unchanged:
+![A Spanish sentence: lunes a las 9 is read as Monday 09:00](docs/screenshots/spanish.png)
 
-| Detail | Syntax |
-| --- | --- |
-| Project | `#Work` |
-| Section | `/Admin` after a project |
-| Label | `%email` or legacy `@email` |
-| Priority | `p1`–`p4` |
-| Assignee | `+Name` after a shared project |
-| Reminder | `!30 min before` |
-| Deadline | `{Sep 30}` |
+The images come from an invented account (`tools/screenshots.py`).
 
 ## Install
 
-```bash
-./deploy.sh
+```sh
+omarchy plugin add https://github.com/danitrrga/omarchy-quick-task.git --enable
 ```
 
-Deployment is idempotent. It installs the Python helper under `~/.local`, installs and enables the `danitrrga.quick-task` Omarchy plugin, replaces the legacy terminal binding, removes the obsolete terminal window rule, tightens `~/.config/tod.cfg` to mode `0600`, and reloads the shell integration.
+Needs the system `python3` at `/usr/bin/python3` (standard library only, no packages).
 
-The first config mutation creates these rollback copies and never overwrites them:
+### Connect Todoist
 
-```text
-~/.config/hypr/bindings.lua.quick-task.bak
-~/.config/hypr/hyprland.lua.quick-task.bak
+Create a personal API token in Todoist under Settings → Integrations → Developer. Quick Task reads it from the `TODOIST_API_TOKEN` environment variable of the shell, or from the `token` field of `~/.config/tod.cfg` (the config file of the [`tod`](https://github.com/alanvardy/tod) client, JSON). Keep that file mode `0600`.
+
+### Open it with a key
+
+The plugin does not touch your Hyprland config. Add a binding:
+
+```lua
+-- ~/.config/hypr/bindings.lua
+o.bind("SUPER + SHIFT + SEMICOLON", "Quick task (Todoist)", "omarchy-shell shell summon io.github.danitrrga.quick-task '{}'")
 ```
 
-The legacy `tod-quickadd` files are left in place but become unused, so rollback is only a binding restore away.
+### Remove
 
-## Architecture
-
-- `src/quick_task/parser.py` performs deterministic bilingual date normalization locally.
-- `src/quick_task/todoist.py` calls Todoist’s current JSON Quick Add endpoint.
-- `src/quick_task/cli.py` exposes a newline-delimited JSON protocol over stdin and stdout.
-- `packaging/omarchy/plugins/danitrrga.quick-task/QuickTask.qml` is the keep-loaded native overlay.
-- `deploy.sh` performs backup-first installation and migration.
-
-The Todoist token is read from `TODOIST_API_TOKEN` or the existing `~/.config/tod.cfg`. It is never placed in process arguments, QML, logs, or returned errors.
-
-## Verify
-
-```bash
-uv venv --python 3.14
-uv pip install pytest
-.venv/bin/pytest -q
-QML_IMPORT_PATH=/usr/share/omarchy/shell qmllint \
-  packaging/omarchy/plugins/danitrrga.quick-task/QuickTask.qml
-bash -n deploy.sh
+```sh
+omarchy plugin remove io.github.danitrrga.quick-task
 ```
 
-The suite covers bilingual parsing, last-value precedence, literal syntax protection, the Todoist request contract, secret redaction, QML keyboard behavior, live theme tokens, theme-owned corner geometry, and run-twice installer safety.
+Then delete the binding and, to erase what it cached, `~/.cache/quick-task/`.
 
-The product contract and implementation rationale live in [docs/spec.md](docs/spec.md).
+## Using it
+
+| Key | Does |
+| --- | --- |
+| `Enter` | add the task (or pick the highlighted entry when a list is open) |
+| `Tab` | pick the highlighted entry |
+| `↑` `↓` | move in the list |
+| `↓` | with no list open: add a note (description) |
+| `⇧` `↓` | show the syntax reminder |
+| `Esc` | close the list; a second `Esc` closes the window |
+| `Backspace` | right after a coloured word: keep that word as plain text |
+
+Click any item on the detail line to keep it as plain text too. After a task is added the window closes and a notification confirms it.
+
+### What is recognised
+
+| In the sentence | Becomes |
+| --- | --- |
+| `today`, `tomorrow`, `tmr`, `2moro`, `hoy`, `mañana`, `pasado mañana` | a date |
+| `mon`, `tues`, `lunes`, `this friday`, `el próximo martes` | the next such day |
+| `21st`, `el 21` | the next 21st |
+| `31 oct`, `oct 31`, `31 de octubre`, `31 oct 2027`, `31/10`, `5/10/26` | that date (a past one means next year) |
+| `at 5pm`, `9am`, `a las 9` after a date | its time |
+| `#Work` · `/Planning` · `@waiting` or `%waiting` · `p1` to `p4` | project · section · label · priority |
+
+Names with spaces and emoji work (`#Side project`, `/Rutinas 🔁`). An unknown `#name` stays plain text, exactly as in Todoist, and the detail line says "not found". Only the last date, project, section and priority in a sentence count.
+
+### Todoist Pro
+
+Reminders (`!30 min before`) and deadlines (`{oct 30}`) are Todoist Pro features. On a free account the `!` list is not offered, their detail items say "needs Todoist Pro", and if you submit one anyway Todoist's own refusal is shown. Plain dates never need braces.
+
+### How the names are applied
+
+Todoist's quick-add endpoint reads only single-word names, and only `@label`, so `#Side project`, `/Rutinas 🔁` or `%waiting` would be left in the title. Quick Task therefore matches mentions to your cached account itself (ignoring case and accents), takes them out of the text, adds the task, then moves it and sets its labels by id. If that second step fails the task still exists, in Inbox, and the window says so.
+
+## What leaves your machine
+
+Only requests to `api.todoist.com`, authenticated with your token:
+
+- the task text, note and the ids above, when you add a task;
+- reads of your projects, sections, labels, collaborators and plan, to fill the lists.
+
+Nothing else is sent anywhere. The token is never written to a log, an error message, a process argument or the plugin's IPC state.
+
+## What it stores
+
+- `~/.cache/quick-task/account.json` (mode `0600`): the names and ids of your projects, sections, labels and collaborators, refreshed in the background when older than five minutes. No task is stored.
+- Your token stays where you keep it (`tod.cfg` or the environment); Quick Task only reads it.
+
+## What it runs
+
+Every command the plugin starts, nothing else:
+
+- `/usr/bin/python3 -I -B <plugin folder>/helper/quick-task parse|add|account|sync`, which makes the HTTPS requests above;
+- `<omarchy>/bin/omarchy-notification-send` after a task is added.
+
+## Development
+
+```sh
+uv venv --python 3.14 ~/.cache/venvs/quick-task    # outside the repo: the plugin validator rejects symlinks
+VIRTUAL_ENV=~/.cache/venvs/quick-task uv pip install pytest pillow
+~/.cache/venvs/quick-task/bin/python -m pytest -q
+omarchy plugin validate .
+```
+
+`omarchy-shell io.github.danitrrga.quick-task state` shows what the overlay computed; `open`, `type`, `key`, `pick`, `submit` and `close` drive the same code a key press does. Regenerate the screenshots with `python3 tools/screenshots.py` (workspace 5, invented account) and the banner with the command at the top of `tools/banner.html`. The behaviour spec is in [docs/spec.md](docs/spec.md); `CLAUDE.md` has the working notes.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
