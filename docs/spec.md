@@ -62,7 +62,7 @@ Todoist's Quick Add endpoint cannot read names with spaces or `%label`, so `#pro
 
 ## Visual notes
 
-A recognised word is drawn in its kind's colour with a soft tint of the same colour behind it; there is no underline. The text field itself is transparent and supplies only the caret and selection; the words are drawn by a StyledText layer under it, so every character keeps its width. The footer follows the agenda panel: keycaps with a word beside them (`↓ description`, `⇧↓ syntax`, `esc close`, `⏎ add task`), each clickable.
+A recognised word is drawn in its kind's colour with a soft tint of the same colour behind it; there is no underline. The text field itself is transparent and supplies only the caret and selection; the words are drawn by a StyledText layer under it, so every character keeps its width. The footer follows the agenda panel: a hairline, a status on the left (`synced 10:07`, silent after a failed sync) and boxed keycaps with a word beside them on the right (`↓ note`, `⇧ ↓ syntax`, `esc close`, `enter add`, the last in the accent colour), each clickable. Keys are plain words in the box, not glyphs the font might lack.
 
 ## Autocomplete contract
 

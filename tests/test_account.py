@@ -145,3 +145,11 @@ def test_sync_without_a_token_reports_it_and_leaves_the_cache_alone(tmp_path: Pa
     assert code == 1
     assert "token not found" in output["error"]
     assert not (tmp_path / "quick-task").exists()
+
+
+def test_the_cache_reports_when_it_was_fetched_so_the_overlay_can_say_synced(tmp_path: Path):
+    path = tmp_path / "account.json"
+    save_cache(fetch_account("tok-secret", opener=fake_todoist()), path, now=1_700_000_000.0)
+
+    assert load_cache(path, now=1_700_000_100.0)["fetched_at"] == 1_700_000_000.0
+    assert load_cache(tmp_path / "missing.json")["fetched_at"] is None

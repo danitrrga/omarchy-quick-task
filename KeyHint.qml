@@ -1,8 +1,7 @@
 import QtQuick 6.11
 import qs.Commons
 
-// A key and the word beside it, one button, written once. The key is an underlined word, the way a
-// link is set in an editorial layout: no box, no glyph the font may not have.
+// A keycap and the word beside it, one button, written once (the agenda panel's footer does the same).
 Item {
   id: root
 
@@ -17,25 +16,23 @@ Item {
 
   implicitWidth: row.implicitWidth
   implicitHeight: row.implicitHeight
-  opacity: !enabled ? 0.45 : (mouse.containsMouse ? 1 : 0.92)
+  opacity: !enabled ? 0.45 : (mouse.containsMouse ? 1 : 0.9)
 
   Row {
     id: row
     spacing: Style.space(4)
 
-    Text {
-      textFormat: Text.PlainText
-      text: root.key
-      color: root.accent ? Color.accent : root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.underline: true
+    KeyCap {
+      label: root.key
+      foreground: root.accent ? Color.accent : root.foreground
+      fontFamily: root.fontFamily
     }
 
     Text {
+      anchors.verticalCenter: parent.verticalCenter
       textFormat: Text.PlainText
       text: root.label
-      color: root.dim
+      color: root.accent ? Color.accent : root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
     }

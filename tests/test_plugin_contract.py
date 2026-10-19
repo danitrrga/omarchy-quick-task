@@ -141,18 +141,32 @@ def test_empty_capture_is_one_quiet_field_instead_of_a_debug_form():
     assert "↓  Description" not in source
 
 
-def test_the_footer_is_underlined_words_and_the_enter_hint_is_the_primary_action():
+def test_the_footer_is_agenda_style_keycaps_with_a_status_on_the_left_and_enter_as_the_primary():
     source = QML.read_text(encoding="utf-8")
     footer = source[source.index("id: actionRow"):source.index("IpcHandler {")]
+    root = Path(__file__).parents[1]
 
     assert footer.count("KeyHint {") == 5
-    for key in ('key: "enter"', 'key: "↑ ↓"', 'key: "↓"', 'key: "⇧↓"', 'key: "esc"'):
+    for key in ('key: "enter"', 'key: "↑ ↓"', 'key: "↓"', 'key: "⇧ ↓"', 'key: "esc"'):
         assert key in footer
+    assert footer.index('key: "esc"') < footer.index('key: "enter"')
+    assert "text: root.syncStatus" in footer
+    assert "anchors.right: parent.right" in footer and "anchors.left: parent.left" in footer
     assert 'root.submitting ? "adding…" : "add"' in footer
     assert "enabled: root.hasDraft && !root.submitting" in footer
-    assert "root.submit()" in footer
-    assert "Rectangle {" not in footer and "Button {" not in footer
-    assert not (Path(__file__).parents[1] / "KeyCap.qml").exists()
+    assert "root.submit()" in footer and "Button {" not in footer
+    assert (root / "KeyCap.qml").is_file()
+    assert "KeyCap {" in (root / "KeyHint.qml").read_text(encoding="utf-8")
+
+
+def test_the_status_says_when_the_account_was_last_synced_and_stays_quiet_after_a_failure():
+    source = QML.read_text(encoding="utf-8")
+    status = source[source.index("readonly property string syncStatus"):]
+    status = status[:status.index("\n  }\n") + 4]
+
+    assert "root.accountNote.length > 0" in status and 'return ""' in status
+    assert 'Qt.formatDateTime(new Date(at * 1000), "HH:mm")' in status
+    assert '"synced "' in status
 
 
 def test_what_was_recognised_is_one_quiet_line_of_words_not_boxes():

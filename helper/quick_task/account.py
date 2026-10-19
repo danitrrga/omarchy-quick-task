@@ -102,7 +102,7 @@ def save_cache(account: Mapping[str, Any], path: Path, *, now: float | None = No
 
 
 def load_cache(path: Path, *, now: float | None = None) -> dict[str, Any]:
-    empty = {"premium": False, "projects": [], "sections": [], "labels": [], "collaborators": {}, "stale": True}
+    empty = {"premium": False, "fetched_at": None, "projects": [], "sections": [], "labels": [], "collaborators": {}, "stale": True}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -113,6 +113,7 @@ def load_cache(path: Path, *, now: float | None = None) -> dict[str, Any]:
     age = (time.time() if now is None else now) - fetched_at if isinstance(fetched_at, (int, float)) else None
     return {
         "premium": payload.get("premium") is True,
+        "fetched_at": fetched_at if isinstance(fetched_at, (int, float)) else None,
         "projects": payload.get("projects", []),
         "sections": payload.get("sections", []),
         "labels": payload.get("labels", []),

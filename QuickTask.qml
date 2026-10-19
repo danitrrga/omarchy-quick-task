@@ -308,6 +308,14 @@ Item {
 
   readonly property var visibleTokens: root.tokens
 
+  // "synced 10:07", as the agenda's footer says it. Silent while a failed sync is explained elsewhere.
+  readonly property string syncStatus: {
+    if (root.accountNote.length > 0)
+      return ""
+    var at = root.account.fetched_at
+    return at ? "synced " + Qt.formatDateTime(new Date(at * 1000), "HH:mm") : ""
+  }
+
   function hex(color) {
     function part(value) {
       var digits = Math.round(value * 255).toString(16)
@@ -724,68 +732,97 @@ Item {
         Item {
           id: actionRow
           width: parent.width
-          height: visible ? hints.implicitHeight : 0
+          height: visible ? footer.implicitHeight : 0
           visible: root.hasDraft || root.showDescription || root.showSyntax || root.errorMessage.length > 0
 
-          Row {
-            id: hints
-            anchors.left: parent.left
-            anchors.leftMargin: Style.spacing.xs
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(18)
+          Column {
+            id: footer
+            width: parent.width
+            spacing: Style.space(8)
 
-            KeyHint {
-              key: "enter"
-              label: root.completion !== null && root.completionIndex >= 0
-                ? "choose" : (root.submitting ? "adding…" : "add")
-              accent: true
-              enabled: root.hasDraft && !root.submitting
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: {
-                if (root.completion !== null && root.completionIndex >= 0)
-                  root.applyCompletionItem(root.completion.items[root.completionIndex])
-                else
-                  root.submit()
+            Rectangle {
+              width: parent.width
+              height: Math.max(1, Style.spacing.hairline)
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+            }
+
+            Item {
+              width: parent.width
+              height: Math.max(statusText.implicitHeight, hints.implicitHeight)
+
+              Text {
+                id: statusText
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.xs
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: root.syncStatus
+                color: Color.muted
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
               }
-            }
 
-            KeyHint {
-              visible: root.completion !== null
-              key: "↑ ↓"
-              label: "move"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              interactive: false
-            }
+              Row {
+                id: hints
+                anchors.right: parent.right
+                anchors.rightMargin: Style.spacing.xs
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(10)
 
-            KeyHint {
-              visible: root.completion === null
-              key: "↓"
-              label: "note"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: {
-                root.showDescription = true
-                descriptionField.forceActiveFocus()
+                KeyHint {
+                  visible: root.completion !== null
+                  key: "↑ ↓"
+                  label: "move"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  interactive: false
+                }
+
+                KeyHint {
+                  visible: root.completion === null
+                  key: "↓"
+                  label: "note"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: {
+                    root.showDescription = true
+                    descriptionField.forceActiveFocus()
+                  }
+                }
+
+                KeyHint {
+                  visible: root.completion === null
+                  key: "⇧ ↓"
+                  label: root.showSyntax ? "hide syntax" : "syntax"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: root.showSyntax = !root.showSyntax
+                }
+
+                KeyHint {
+                  key: "esc"
+                  label: "close"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: root.dismiss()
+                }
+
+                KeyHint {
+                  key: "enter"
+                  label: root.completion !== null && root.completionIndex >= 0
+                    ? "choose" : (root.submitting ? "adding…" : "add")
+                  accent: true
+                  enabled: root.hasDraft && !root.submitting
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: {
+                    if (root.completion !== null && root.completionIndex >= 0)
+                      root.applyCompletionItem(root.completion.items[root.completionIndex])
+                    else
+                      root.submit()
+                  }
+                }
               }
-            }
-
-            KeyHint {
-              visible: root.completion === null
-              key: "⇧↓"
-              label: root.showSyntax ? "hide syntax" : "syntax"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: root.showSyntax = !root.showSyntax
-            }
-
-            KeyHint {
-              key: "esc"
-              label: "close"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: root.dismiss()
             }
           }
         }
