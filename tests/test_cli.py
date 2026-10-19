@@ -89,6 +89,7 @@ def test_add_command_normalizes_dates_and_forwards_description():
             "tokens": output["parsed"]["tokens"],
             "recognitions": output["parsed"]["recognitions"],
         },
+        "warnings": [],
     }
 
 

@@ -4,14 +4,7 @@ import re
 from pathlib import Path
 
 
-QML = (
-    Path(__file__).parents[1]
-    / "packaging"
-    / "omarchy"
-    / "plugins"
-    / "danitrrga.quick-task"
-    / "QuickTask.qml"
-)
+QML = Path(__file__).parents[1] / "QuickTask.qml"
 
 
 def qml_source() -> str:
@@ -32,7 +25,7 @@ def test_every_visible_color_comes_from_live_omarchy_roles():
         "Color.menu.text",
         "Color.menu.border",
         "Color.menu.scrim",
-        "Color.menu.selectedBackground",
+        "Color.muted",
         "Color.menu.selectedText",
         "Color.accent",
         "Color.urgent",
@@ -47,7 +40,6 @@ def test_font_and_spacing_follow_the_live_shell_scale():
     assert "Style.font.heading" in source
     assert "Style.font.body" in source
     assert "Style.spacing.panelPadding" in source
-    assert "Style.spacing.controlPaddingX" in source
     assert source.count("Style.space(") >= 4
     assert source.count("Style.spacing.") >= 12
     assert not re.search(r'font\.family:\s*["\']', source)
@@ -58,9 +50,8 @@ def test_every_drawn_corner_uses_the_single_live_theme_radius():
     radius_assignments = re.findall(r"\bradius\s*:\s*([^\n}]+)", source)
 
     assert "readonly property int cornerRadius: Style.cornerRadius" in source
-    # The quiet capture surface deliberately draws very few shapes; every
-    # corner that remains must still follow the live theme.
-    assert len(radius_assignments) >= 2
+    # The Editorial layout draws one shape, the card; every corner must follow the live theme.
+    assert len(radius_assignments) >= 1
     assert all("root.cornerRadius" in assignment for assignment in radius_assignments)
     assert not re.search(r"\bradius\s*:\s*\d", source)
 
@@ -72,7 +63,7 @@ def test_overlay_contains_no_machine_specific_paths_or_decorative_effects():
     assert "Caskaydia" not in source
     assert "DropShadow" not in source
     assert "Gradient" not in source
-    assert 'Quickshell.env("HOME") + "/.local/bin/quick-task"' in source
+    assert 'Qt.resolvedUrl("helper/quick-task")' in source
 
 
 def test_square_theme_control_would_fail_if_a_fixed_radius_were_added():

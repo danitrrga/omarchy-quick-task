@@ -6,7 +6,7 @@ Quick Task is a resident Omarchy overlay for sending a fully structured task to 
 
 ## Interaction contract
 
-1. The global binding summons a keep-loaded `danitrrga.quick-task` Omarchy overlay.
+1. The global binding summons a keep-loaded `io.github.danitrrga.quick-task` Omarchy overlay.
 2. Focus starts in the task field. `Enter` adds, `Esc` closes, `Down` reveals and focuses the description field, and `Shift + Down` reveals the syntax reference.
 3. Recognition runs after a short typing debounce. It never blocks input or contacts Todoist.
 4. Recognized details appear both as theme-aware inline marks and as compact chips below the sentence. The last occurrence of each detail type wins. With the cursor immediately after an active mark, the first `Backspace` makes every current occurrence of that type literal without deleting visible text; subsequent backspaces edit normally.
@@ -25,6 +25,7 @@ The normalizer supports English and Spanish simultaneously, regardless of the To
 - Weekdays and common abbreviations: `monday`, `mon`, `lunes`, `lun`, and equivalents for all seven days.
 - Relative dates: `today`, `tod`, `tomorrow`, `tom`, `tmrw`, `hoy`, `mañana`, `pasado mañana`.
 - Qualified weekdays: `this Friday`, `este viernes`, `next Tuesday`, `el próximo martes`.
+- Dates with a month, in either order and either language (`31 oct`, `oct 31`, `31 de octubre`), with an optional year; and `d/m`, `m/d` when unambiguous or `d/m/yy`. A bare `1/2` is not a date. A date already past resolves to next year.
 - Days of month: `21st`, `21º`, `el 21`. A day that has already passed resolves to the next month so quick capture does not silently create an overdue task.
 - Times adjacent to dates remain part of the normalized sentence; Spanish `a las 9` is normalized to `at 09:00`.
 
@@ -55,20 +56,33 @@ The chosen direction combines the restrained dark surface with the instrument pa
 - The overlay sits near the upper third of the active screen, no wider than roughly 640 shell-scaled pixels, and its height grows only for recognized details, description, syntax help, or errors.
 - Empty state is a single task field. Secondary actions appear only after typing.
 
+## Mentions and Todoist Pro
+
+Todoist's Quick Add endpoint cannot read names with spaces or `%label`, so `#project`, `/section` and labels are resolved locally from the cached account and applied by id after the task is created (see README, "What Todoist's API reads"). Unknown mentions remain literal text and are marked "not found". Reminders and deadlines require Todoist Pro: without it the `!` picker is hidden and their chips say so.
+
+## Visual notes
+
+A recognised word is drawn in its kind's colour with a soft tint of the same colour behind it; there is no underline. The text field itself is transparent and supplies only the caret and selection; the words are drawn by a StyledText layer under it, so every character keeps its width. The footer follows the agenda panel: keycaps with a word beside them (`↓ description`, `⇧↓ syntax`, `esc close`, `⏎ add task`), each clickable.
+
+## Autocomplete contract
+
+Typing a sigil at the start of a word opens a picker built from the account (projects, sections of the project written earlier in the sentence, labels, collaborators of that project if shared) plus fixed lists for reminders and priority. `#`, `/`, `%`, `@`, `+`, `!` preselect the first entry; `Enter` and `Tab` pick it. The priority picker (a lone `p`) is soft: nothing is selected and `Enter` still submits until `Down` selects an entry. `Esc` closes the picker first. Picking rewrites only the typed trigger and puts the cursor after the inserted name. Account data comes from a cache refreshed in the background, so opening never waits on the network; a failed refresh is shown under the field.
+
 ## Architecture
 
-- `src/quick_task/parser.py`: pure bilingual parser and normalizer.
-- `src/quick_task/todoist.py`: token loading and Todoist Quick Add HTTP client.
-- `src/quick_task/cli.py`: newline-delimited JSON protocol over stdin/stdout with `parse` and `add` commands.
-- `packaging/omarchy/plugins/danitrrga.quick-task/QuickTask.qml`: keep-loaded overlay, keyboard interaction, preview, and submit state.
-- `deploy.sh`: idempotent user installation, legacy binding replacement, plugin enablement, permission hardening, and rollback backups.
+- `helper/quick_task/parser.py`: pure bilingual parser and normalizer.
+- `helper/quick_task/todoist.py`: token loading and the Todoist HTTP client (Quick Add, GET).
+- `helper/quick_task/account.py`: paginated account reads and the private cache.
+- `helper/quick_task/cli.py`: newline-delimited JSON protocol over stdin/stdout with `parse`, `add`, `account` and `sync` commands.
+- `QuickTaskLogic.js`: picker and literal-protection logic, testable without the shell.
+- `QuickTask.qml`: keep-loaded overlay, keyboard interaction, preview, picker and submit state.
 
-The token is read from `TODOIST_API_TOKEN` or the existing `~/.config/tod.cfg`; it is never placed in argv, QML, logs, or error text. The installer tightens the existing config to mode `0600`.
+The token is read from `TODOIST_API_TOKEN` or the existing `~/.config/tod.cfg`; it is never placed in argv, QML, logs, IPC state or error text.
 
 ## Acceptance contract
 
 - Parser tests cover both languages, every weekday abbreviation, month rollover, accent-insensitive Spanish input, times, overlaps, suppression, and non-date numbers.
 - HTTP tests prove JSON encoding, `meta: true`, note handling, timeouts, and token redaction.
 - QML contract tests ban literal colors/radii/font names and require direct Omarchy `Color`/`Style` roles plus stdin-enabled process transport.
-- Installer tests run twice against fixtures and prove no duplicate binding, backup creation, legacy rule removal, and private config permissions.
+- Account tests prove pagination, collaborators only for shared projects, a private atomic cache, and token redaction. Completion tests prove each picker rule and that every rule fails when its code is broken.
 - Live verification summons the real overlay, checks exclusive focus and keyboard behavior, submits one disposable task, removes it through the API, and captures screenshots under one square and one rounded theme before restoring the original theme.

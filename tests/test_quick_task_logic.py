@@ -6,14 +6,7 @@ import subprocess
 
 
 ROOT = Path(__file__).parents[1]
-LOGIC = (
-    ROOT
-    / "packaging"
-    / "omarchy"
-    / "plugins"
-    / "danitrrga.quick-task"
-    / "QuickTaskLogic.js"
-)
+LOGIC = ROOT / "QuickTaskLogic.js"
 
 
 def run_logic() -> dict[str, object]:

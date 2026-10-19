@@ -239,3 +239,103 @@ def test_result_serializes_to_the_cli_contract():
             }
         ],
     }
+
+
+import pytest
+
+from quick_task.parser import parse_quick_text as _parse
+from datetime import datetime as _datetime
+
+_NOW = _datetime.fromisoformat("2026-10-19T09:00:00+02:00")
+
+
+@pytest.mark.parametrize(
+    "word", ["tmr", "tmw", "tmrw", "tmrrw", "tomm", "tomorow", "2moro", "2morrow", "2mrw", "mñn", "MNN", "Tmr"]
+)
+def test_the_ways_tomorrow_is_typed_in_a_hurry_all_resolve(word):
+    result = _parse(f"call {word}", now=_NOW)
+
+    assert result.normalized == "call 2026-10-20"
+    assert result.tokens[0].text == word
+
+
+@pytest.mark.parametrize("word", ["tdy", "tday", "2day", "TDY"])
+def test_the_ways_today_is_typed_in_a_hurry_all_resolve(word):
+    assert _parse(f"call {word}", now=_NOW).normalized == "call 2026-10-19"
+
+
+@pytest.mark.parametrize("word", ["tmrx", "tomo", "tmrwx", "tdys", "mnnx"])
+def test_near_misses_are_not_dates(word):
+    assert _parse(f"call {word}", now=_NOW).tokens == ()
+
+
+def test_token_offsets_are_utf16_units_so_they_index_the_string_the_way_qml_does():
+    text = "Rutina 🔁 y 😀 tmr p1"
+    result = _parse(text, now=_NOW).to_dict()
+    utf16 = text.encode("utf-16-le")
+
+    for token in result["tokens"]:
+        start, end = token["start"] * 2, token["end"] * 2
+        assert utf16[start:end].decode("utf-16-le") == token["text"]
+    assert [t["text"] for t in result["tokens"]] == ["tmr", "p1"]
+
+
+def test_ascii_text_is_unaffected_by_the_offset_conversion():
+    result = _parse("call tmr", now=_NOW).to_dict()
+
+    assert (result["tokens"][0]["start"], result["tokens"][0]["end"]) == (5, 8)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("pay rent 31 oct", "pay rent 2026-10-31"),
+        ("pay rent oct 31", "pay rent 2026-10-31"),
+        ("pay rent 31 october", "pay rent 2026-10-31"),
+        ("pay rent October 31st", "pay rent 2026-10-31"),
+        ("dentist 31st of october", "dentist 2026-10-31"),
+        ("pagar alquiler 31 de octubre", "pagar alquiler 2026-10-31"),
+        ("pagar alquiler 31 oct", "pagar alquiler 2026-10-31"),
+        ("pagar 1 de diciembre", "pagar 2026-12-01"),
+        ("send 31 oct 2027", "send 2027-10-31"),
+        ("send oct 31, 2027", "send 2027-10-31"),
+        ("send 31/10", "send 2026-10-31"),
+        ("send 10/31", "send 2026-10-31"),
+        ("send 5/10/26", "send 2026-10-05"),
+        ("send 05/10/2027", "send 2027-10-05"),
+    ],
+)
+def test_dates_with_a_month_resolve_in_english_and_spanish(text, expected):
+    assert _parse(text, now=_NOW).normalized == expected
+
+
+def test_a_month_date_that_has_passed_means_the_next_one_but_today_is_still_today():
+    assert _parse("x 19 oct", now=_NOW).normalized == "x 2026-10-19"
+    assert _parse("x 5 oct", now=_NOW).normalized == "x 2027-10-05"
+    assert _parse("x oct 18", now=_NOW).normalized == "x 2027-10-18"
+    assert _parse("x 29 feb", now=_NOW).normalized == "x 2028-02-29"
+
+
+def test_a_time_after_a_month_date_stays_attached():
+    assert _parse("x 31 oct at 5pm", now=_NOW).normalized == "x 2026-10-31 at 17:00"
+    assert _parse("x 31 de octubre a las 9", now=_NOW).normalized == "x 2026-10-31 at 09:00"
+
+
+@pytest.mark.parametrize("text", ["x 31 apr", "x 30 feb", "x 30 feb 2027", "x 31/4/2027", "x oct 2026", "x 1/2 cup", "x 3/4", "x 12/12", "x v1/2/3", "x 32 oct"])
+def test_things_that_are_not_dates_stay_plain_text(text):
+    assert _parse(text, now=_NOW).tokens == ()
+    assert _parse(text, now=_NOW).normalized == text
+
+
+def test_mar_is_march_next_to_a_day_and_tuesday_alone():
+    assert _parse("x 31 mar", now=_NOW).normalized == "x 2027-03-31"
+    assert _parse("x mar 5", now=_NOW).normalized == "x 2027-03-05"
+    assert _parse("x mar", now=_NOW).normalized == "x 2026-10-20"
+
+
+def test_a_month_date_is_one_token_with_its_own_span_and_a_readable_label():
+    result = _parse("pay 31 de octubre a las 9 now", now=_NOW)
+    token = result.tokens[0]
+
+    assert token.kind == "date" and token.text == "31 de octubre a las 9"
+    assert token.label == "Sat 31 Oct, 09:00"

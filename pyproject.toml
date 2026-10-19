@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quick-task"
-version = "0.1.0"
-description = "Native Omarchy quick capture for Todoist"
+version = "2.0.0"
+description = "Keyboard-first Todoist quick capture for Omarchy, with account autocomplete and English and Spanish dates"
 requires-python = ">=3.13"
 dependencies = []
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["helper"]
 testpaths = ["tests"]

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.danitrrga.quick-task",
+  "name": "Quick Task",
+  "version": "2.0.0",
+  "author": "danitrrga",
+  "license": "MIT",
+  "description": "Keyboard-first Todoist quick capture for Omarchy, with account autocomplete and English and Spanish dates",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "QuickTask.qml"
+  }
+}

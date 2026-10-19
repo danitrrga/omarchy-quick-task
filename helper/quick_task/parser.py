@@ -12,7 +12,10 @@ from datetime import date, datetime, timedelta
 import calendar
 import re
 import unicodedata
-from typing import Collection
+from collections.abc import Mapping
+from typing import Any, Collection
+
+from .mentions import resolve_mentions
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,9 +27,17 @@ class ParsedToken:
     label: str
     start: int
     end: int
+    known: bool | None = None  # project, section and label: found in the account (None: account not loaded)
 
     def to_dict(self) -> dict[str, object]:
-        return asdict(self)
+        data = asdict(self)
+        if data["known"] is None:
+            del data["known"]
+        return data
+
+
+def _utf16_offset(text: str, index: int) -> int:
+    return len(text[:index].encode("utf-16-le", "surrogatepass")) // 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,9 +51,17 @@ class ParseResult:
         return {
             "original": self.original,
             "normalized": self.normalized,
-            "tokens": [token.to_dict() for token in self.tokens],
-            "recognitions": [token.to_dict() for token in self.recognitions],
+            "tokens": [self._for_qml(token) for token in self.tokens],
+            "recognitions": [self._for_qml(token) for token in self.recognitions],
         }
+
+    def _for_qml(self, token: ParsedToken) -> dict[str, object]:
+        """Offsets in UTF-16 units, which is how QML and JavaScript index a string: a character such as
+        an emoji is one code point here and two there, and every offset after it would be off by one."""
+        data = token.to_dict()
+        data["start"] = _utf16_offset(self.original, token.start)
+        data["end"] = _utf16_offset(self.original, token.end)
+        return data
 
 
 _WEEKDAY_ALIASES = {
@@ -69,14 +88,44 @@ _WEEKDAY_PATTERN = "|".join(
 # due date, and the overlay presents two incompatible readings of one span.
 _DATE_START = r"(?<![@%#+/!{])\b"
 
+_MONTH_ALIASES = {
+    1: ("january", "jan", "enero", "ene"),
+    2: ("february", "feb", "febrero"),
+    3: ("march", "mar", "marzo"),
+    4: ("april", "apr", "abril", "abr"),
+    5: ("may", "mayo"),
+    6: ("june", "jun", "junio"),
+    7: ("july", "jul", "julio"),
+    8: ("august", "aug", "agosto", "ago"),
+    9: ("september", "sept", "sep", "septiembre", "setiembre", "set"),
+    10: ("october", "oct", "octubre"),
+    11: ("november", "nov", "noviembre"),
+    12: ("december", "dec", "diciembre", "dic"),
+}
+_MONTH_BY_ALIAS = {alias: month for month, aliases in _MONTH_ALIASES.items() for alias in aliases}
+_MONTH_PATTERN = "|".join(re.escape(alias) for alias in sorted(_MONTH_BY_ALIAS, key=len, reverse=True))
+_DAY_PATTERN = r"(?:3[01]|[12]\d|0?[1-9])"
+
 _RELATIVE_DAYS = {
     "today": 0,
     "tod": 0,
+    "tdy": 0,
+    "tday": 0,
+    "2day": 0,
     "hoy": 0,
     "tomorrow": 1,
     "tom": 1,
+    "tmr": 1,
+    "tmw": 1,
     "tmrw": 1,
+    "tmrrw": 1,
+    "tomm": 1,
+    "tomorow": 1,
+    "2moro": 1,
+    "2morrow": 1,
+    "2mrw": 1,
     "manana": 1,
+    "mnn": 1,  # "mñn", the way Spanish is typed in a hurry (ñ folds to n)
     "pasado manana": 2,
 }
 
@@ -140,6 +189,37 @@ def _future_day_of_month(today: date, day: int) -> date:
     raise ValueError(f"could not resolve day of month: {day}")
 
 
+def _month_day(today: date, month: int, day: int, year: int | None = None) -> date | None:
+    """A day in a named month. Without a year, the next one that is not already past."""
+    if year is not None:
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
+    for candidate_year in range(today.year, today.year + 9):
+        try:
+            candidate = date(candidate_year, month, day)
+        except ValueError:
+            continue
+        if candidate >= today:
+            return candidate
+    return None
+
+
+def _numeric_day_month(today: date, first: int, second: int, year: int | None) -> date | None:
+    """31/10 and 10/31 are unambiguous, 5/10/26 is day first. A bare 1/2 or 3/4 stays text: fractions
+    are far commoner in a task than a date written without a year."""
+    if first > 12 and second <= 12:
+        day, month = first, second
+    elif second > 12 and first <= 12:
+        day, month = second, first
+    elif year is not None:
+        day, month = first, second
+    else:
+        return None
+    return _month_day(today, month, day, year)
+
+
 def _overlaps(candidate: _Candidate, selected: list[_Candidate]) -> bool:
     return any(candidate.start < other.end and other.start < candidate.end for other in selected)
 
@@ -151,7 +231,10 @@ def _add_matches(
     resolver,
 ) -> None:
     for match in pattern.finditer(folded):
-        candidate = _Candidate(match.start(), match.end(), resolver(match))
+        due = resolver(match)
+        if due is None:
+            continue
+        candidate = _Candidate(match.start(), match.end(), due)
         if not _overlaps(candidate, selected):
             selected.append(candidate)
 
@@ -182,21 +265,32 @@ def _token_id(start: int, end: int, raw: str) -> str:
     return f"date:{start}:{end}:{stable_text}"
 
 
-def _metadata_tokens(text: str) -> list[ParsedToken]:
+def _metadata_tokens(text: str, account: Mapping[str, Any] | None = None) -> list[ParsedToken]:
     tokens: list[ParsedToken] = []
+    mentions = {(m.kind, m.start): m for m in resolve_mentions(text, account)}
+    loaded = bool(account and account.get("projects"))
     for kind, title, pattern in _METADATA_PATTERNS:
         for match in pattern.finditer(text):
             raw = match.group(0)
+            end = match.end()
+            known: bool | None = None
+            if kind in ("project", "section", "label") and loaded:
+                mention = mentions.get((kind, match.start()))
+                known = mention is not None
+                if mention is not None:
+                    end = mention.end
+                    raw = text[match.start():end]
             stable_text = re.sub(r"\s+", "_", _fold(raw).strip())
             tokens.append(
                 ParsedToken(
-                    id=f"{kind}:{match.start()}:{match.end()}:{stable_text}",
+                    id=f"{kind}:{match.start()}:{end}:{stable_text}",
                     kind=kind,
                     text=raw,
                     value=raw,
                     label=f"{title}  {raw}",
                     start=match.start(),
-                    end=match.end(),
+                    end=end,
+                    known=known,
                 )
             )
     return sorted(tokens, key=lambda token: (token.start, token.end))
@@ -223,6 +317,7 @@ def parse_quick_text(
     *,
     now: datetime | None = None,
     ignored: Collection[str] = (),
+    account: Mapping[str, Any] | None = None,
 ) -> ParseResult:
     """Recognize supported date phrases and return a Todoist-safe sentence."""
 
@@ -242,6 +337,56 @@ def parse_quick_text(
         relative_pattern,
         folded,
         lambda match: today + timedelta(days=_RELATIVE_DAYS[match.group(0).casefold()]),
+    )
+
+    # Named months go before the weekday patterns: "31 mar" is March, not a Tuesday.
+    def _year(match):
+        text = match.group("year")
+        return int(text) if text else None
+
+    day_then_month = re.compile(
+        rf"{_DATE_START}(?P<day>{_DAY_PATTERN})(?:st|nd|rd|th|o|a)?\s+(?:de\s+|of\s+)?"
+        rf"(?P<month>{_MONTH_PATTERN})\b(?:\.?,?\s+(?:de\s+)?(?P<year>20\d\d)\b)?",
+        re.IGNORECASE,
+    )
+    _add_matches(
+        selected,
+        day_then_month,
+        folded,
+        lambda match: _month_day(
+            today, _MONTH_BY_ALIAS[match.group("month").casefold()], int(match.group("day")), _year(match)
+        ),
+    )
+
+    month_then_day = re.compile(
+        rf"{_DATE_START}(?P<month>{_MONTH_PATTERN})\b\.?\s+(?P<day>{_DAY_PATTERN})(?:st|nd|rd|th)?\b"
+        rf"(?:,?\s+(?P<year>20\d\d)\b)?",
+        re.IGNORECASE,
+    )
+    _add_matches(
+        selected,
+        month_then_day,
+        folded,
+        lambda match: _month_day(
+            today, _MONTH_BY_ALIAS[match.group("month").casefold()], int(match.group("day")), _year(match)
+        ),
+    )
+
+    numeric = re.compile(
+        rf"(?<![\d/@%#+!{{]){_DATE_START}(?P<first>\d{{1,2}})/(?P<second>\d{{1,2}})"
+        rf"(?:/(?P<year>\d{{4}}|\d{{2}}))?(?![\d/])",
+        re.IGNORECASE,
+    )
+    _add_matches(
+        selected,
+        numeric,
+        folded,
+        lambda match: _numeric_day_month(
+            today,
+            int(match.group("first")),
+            int(match.group("second")),
+            None if not match.group("year") else (int(match.group("year")) + (2000 if len(match.group("year")) == 2 else 0)),
+        ),
     )
 
     qualified_weekday = re.compile(
@@ -295,7 +440,7 @@ def parse_quick_text(
         lambda match: _future_day_of_month(today, int(match.group("day"))),
     )
 
-    metadata_tokens = _metadata_tokens(text)
+    metadata_tokens = _metadata_tokens(text, account)
     selected = [
         candidate
         for candidate in selected
