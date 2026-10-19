@@ -29,7 +29,7 @@ from quick_task.account import cache_path  # noqa: E402
 PLUGIN = "io.github.danitrrga.quick-task"
 WORKSPACE = "5"
 OUT = ROOT / "docs" / "screenshots"
-PAD = 70  # logical pixels of wallpaper kept around the card
+PAD = 3  # just the card's border: the wallpaper behind it is the theme's, not ours to publish
 
 DEMO = {
     "premium": False,
