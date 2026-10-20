@@ -27,6 +27,7 @@ Test the UI through IPC: `omarchy-shell io.github.danitrrga.quick-task state|typ
 - Token offsets leave the helper in UTF-16 units (what QML and JS index by); Python's are code points, and an emoji shifts every later highlight by one.
 - Todoist's `/tasks/quick` cannot read multi-word names or `%label`; mentions are resolved locally (`helper/quick_task/mentions.py`). Reminders and deadlines need Todoist Pro. Probe the live API with disposable tasks and delete them; never guess a Todoist behaviour.
 
+- Todoist's `/tasks/quick` `note` creates a *comment*; the task description is set by id (`set_description`). Probed live 2026-10-20.
 - A test is not evidence until it has been seen to fail: mutate the code, watch the test go red.
 - The Todoist token is read from the user's `tod` config; never put it in an error message, a log or argv.
 - Bilingual input (English and Spanish date words) is the point: change one language's rules and the other's tests must still pass.

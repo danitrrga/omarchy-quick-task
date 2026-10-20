@@ -35,7 +35,7 @@ Only the final occurrence of each detail type is active. Earlier occurrences are
 
 Todoist metadata owns its full recognized span. A date-like label such as `@tomorrow`, project such as `#viernes`, assignee such as `+monday`, or deadline such as `{due friday}` is therefore previewed only as that metadata and never simultaneously as a due date.
 
-The overlay also previews Todoist syntax for `#project`, `/section`, `%label` and legacy `@label`, `p1`–`p4`, `+assignee`, `!reminder`, and `{deadline}`. The description is sent through the API’s `note` field.
+The overlay also previews Todoist syntax for `#project`, `/section`, `%label` and legacy `@label`, `p1`–`p4`, `+assignee`, `!reminder`, and `{deadline}`. The description is set on the task by id after it is created: quick-add’s `note` field would create a comment, not a description.
 
 ## Current Todoist parity
 

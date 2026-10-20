@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from quick_task.todoist import TodoistError, load_token, quick_add
+from quick_task.todoist import TodoistError, load_token, quick_add, set_description
 
 
 class Response:
@@ -62,7 +62,6 @@ def test_quick_add_sends_the_current_json_contract_and_returns_the_real_response
 
     result = quick_add(
         "Buy milk 2026-09-18 #Inbox p1",
-        note="Check oat milk too",
         token="secret-token",
         opener=opener,
     )
@@ -75,22 +74,26 @@ def test_quick_add_sends_the_current_json_contract_and_returns_the_real_response
     assert captured["timeout"] == 10
     assert json.loads(request.data) == {
         "text": "Buy milk 2026-09-18 #Inbox p1",
-        "note": "Check oat milk too",
         "meta": True,
     }
     assert result == response_payload
 
 
-def test_blank_description_is_not_sent_as_a_note():
+def test_description_is_set_on_the_task_not_sent_as_a_quick_add_note():
+    """Todoist's quick-add `note` creates a comment; the task's own description is a field of the task."""
     captured = {}
 
     def opener(request, *, timeout):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
         captured["payload"] = json.loads(request.data)
         return Response({"id": "task-123"})
 
-    quick_add("Buy milk", note="   ", token="secret", opener=opener)
+    set_description("task-123", "  Check oat milk too  ", token="secret", opener=opener)
 
-    assert captured["payload"] == {"text": "Buy milk", "meta": True}
+    assert captured["url"] == "https://api.todoist.com/api/v1/tasks/task-123"
+    assert captured["method"] == "POST"
+    assert captured["payload"] == {"description": "Check oat milk too"}
 
 
 @pytest.mark.parametrize(
@@ -113,7 +116,7 @@ def test_http_errors_are_specific_but_never_include_server_bodies_or_tokens(code
         )
 
     with pytest.raises(TodoistError) as error:
-        quick_add("Buy milk", note="", token="secret-token", opener=opener)
+        quick_add("Buy milk", token="secret-token", opener=opener)
 
     assert str(error.value) == message
     assert "secret-token" not in str(error.value)
@@ -124,7 +127,7 @@ def test_network_error_is_redacted():
         raise URLError("connection failed while using secret-token")
 
     with pytest.raises(TodoistError) as error:
-        quick_add("Buy milk", note="", token="secret-token", opener=opener)
+        quick_add("Buy milk", token="secret-token", opener=opener)
 
     assert str(error.value) == "Could not reach Todoist."
 
@@ -138,4 +141,4 @@ def test_unreadable_success_response_is_a_safe_error():
         return BrokenResponse({})
 
     with pytest.raises(TodoistError, match="unreadable response"):
-        quick_add("Buy milk", note="", token="secret", opener=opener)
+        quick_add("Buy milk", token="secret", opener=opener)

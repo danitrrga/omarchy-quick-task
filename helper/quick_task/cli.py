@@ -15,7 +15,7 @@ from urllib.request import urlopen
 from .account import cache_path, fetch_account, load_cache, save_cache
 from .mentions import plan_add
 from .parser import parse_quick_text
-from .todoist import TodoistError, load_token, move_task, quick_add, set_labels
+from .todoist import TodoistError, load_token, move_task, quick_add, set_description, set_labels
 
 
 DESCRIPTION = """Send a task to Todoist from a terminal or an agent.
@@ -80,10 +80,15 @@ def _fail(message: str, stdout: IO[str], stderr: IO[str], *, plain: bool) -> int
     return 1
 
 
-def _apply_plan(result: dict[str, object], plan, token: str, opener: Callable[..., Any]) -> list[str]:
+def _apply_plan(result: dict[str, object], plan, description: str, token: str, opener: Callable[..., Any]) -> list[str]:
     """Apply by id what Quick Add cannot read. The task already exists, so a failure here is a warning."""
     warnings: list[str] = []
     task_id = str(result.get("id", ""))
+    if description.strip():
+        try:
+            set_description(task_id, description, token=token, opener=opener)
+        except TodoistError as error:
+            warnings.append(f"Added, but could not save the description: {error}")
     if plan.labels:
         known = [str(label) for label in result.get("labels") or []]
         labels = known + [label for label in plan.labels if label not in known]
@@ -162,8 +167,8 @@ def main(
             raise ValueError("description must be a string")
         token = load_token(environment, config_path)
         transport = opener or urlopen
-        result = quick_add(plan.text, note=description, token=token, opener=transport)
-        warnings = _apply_plan(result, plan, token, transport)
+        result = quick_add(plan.text, token=token, opener=transport)
+        warnings = _apply_plan(result, plan, description, token, transport)
         if from_argv and not args.json:
             content = result.get("content") or plan.text
             output_stream.write(f"Added: {content} ({result.get('id', '')})\n")

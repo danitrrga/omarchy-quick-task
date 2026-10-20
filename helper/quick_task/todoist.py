@@ -68,14 +68,11 @@ def _safe_http_error(code: int, body: bytes = b"", token: str = "") -> TodoistEr
 def quick_add(
     text: str,
     *,
-    note: str = "",
     token: str,
     opener: Callable[..., Any] = urlopen,
 ) -> dict[str, object]:
-    payload: dict[str, object] = {"text": text, "meta": True}
-    if note.strip():
-        payload["note"] = note.strip()
-    return _request("POST", QUICK_ADD_URL, token=token, payload=payload, opener=opener)
+    # Not `note`: quick-add turns that into a comment, and the description is set by id afterwards.
+    return _request("POST", QUICK_ADD_URL, token=token, payload={"text": text, "meta": True}, opener=opener)
 
 
 def post_json(
@@ -110,6 +107,16 @@ def set_labels(
     opener: Callable[..., Any] = urlopen,
 ) -> dict[str, object]:
     return post_json(f"{API_URL}/tasks/{task_id}", {"labels": labels}, token=token, opener=opener)
+
+
+def set_description(
+    task_id: str,
+    description: str,
+    *,
+    token: str,
+    opener: Callable[..., Any] = urlopen,
+) -> dict[str, object]:
+    return post_json(f"{API_URL}/tasks/{task_id}", {"description": description.strip()}, token=token, opener=opener)
 
 
 def get_json(

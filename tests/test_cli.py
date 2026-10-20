@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import StringIO
 import json
+from urllib.error import HTTPError
 
 from quick_task.cli import main
 
@@ -60,7 +61,7 @@ def test_add_command_normalizes_dates_and_forwards_description():
             return b'{"id":"task-42","content":"Call Marta"}'
 
     def opener(request, *, timeout):
-        captured["payload"] = json.loads(request.data)
+        captured.setdefault("requests", []).append((request.full_url, json.loads(request.data)))
         return Response()
 
     code, output = run_cli(
@@ -75,11 +76,10 @@ def test_add_command_normalizes_dates_and_forwards_description():
     )
 
     assert code == 0
-    assert captured["payload"] == {
-        "text": "Call Marta 2026-09-21",
-        "note": "Ask about the lease",
-        "meta": True,
-    }
+    assert captured["requests"] == [
+        ("https://api.todoist.com/api/v1/tasks/quick", {"text": "Call Marta 2026-09-21", "meta": True}),
+        ("https://api.todoist.com/api/v1/tasks/task-42", {"description": "Ask about the lease"}),
+    ]
     assert output == {
         "ok": True,
         "result": {"id": "task-42", "content": "Call Marta"},
@@ -172,7 +172,7 @@ def test_add_from_argv_joins_words_forwards_the_note_and_prints_one_plain_line()
     captured = {}
 
     def opener(request, *, timeout):
-        captured["payload"] = json.loads(request.data)
+        captured.setdefault("requests", []).append((request.full_url, json.loads(request.data)))
         return _Response(b'{"id":"task-7","content":"Call Marta"}')
 
     code, out, err = run_argv(
@@ -182,7 +182,10 @@ def test_add_from_argv_joins_words_forwards_the_note_and_prints_one_plain_line()
     )
 
     assert code == 0
-    assert captured["payload"] == {"text": "Call Marta 2026-09-21", "note": "Ask about the lease", "meta": True}
+    assert captured["requests"] == [
+        ("https://api.todoist.com/api/v1/tasks/quick", {"text": "Call Marta 2026-09-21", "meta": True}),
+        ("https://api.todoist.com/api/v1/tasks/task-7", {"description": "Ask about the lease"}),
+    ]
     assert out.splitlines()[0] == "Added: Call Marta (task-7)"
     assert err == ""
     assert "secret" not in out
@@ -267,3 +270,23 @@ def test_running_the_wrapper_with_plain_python_leaves_no_bytecode_in_the_plugin_
 
     assert done.returncode == 0, done.stderr
     assert not list(helper.rglob("__pycache__"))
+
+
+def test_a_failed_description_is_a_warning_because_the_task_already_exists():
+    calls = []
+
+    def opener(request, *, timeout):
+        calls.append(request.full_url)
+        if request.full_url.endswith("/tasks/task-9"):
+            raise HTTPError(request.full_url, 500, "boom", {}, None)
+        return _Response(b'{"id":"task-9","content":"Call Marta"}')
+
+    code, out, err = run_argv(
+        ["add", "Call Marta", "--note", "details"],
+        environ={"TODOIST_API_TOKEN": "secret"},
+        opener=opener,
+    )
+
+    assert code == 0
+    assert out.splitlines()[0] == "Added: Call Marta (task-9)"
+    assert err.startswith("warning: Added, but could not save the description")
