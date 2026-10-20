@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.danitrrga.quick-task",
   "name": "Quick Task",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": "danitrrga",
   "license": "MIT",
-  "description": "Keyboard-first Todoist quick capture for Omarchy, with account autocomplete and English and Spanish dates",
+  "description": "Type a sentence, get a Todoist task: English and Spanish dates, your own projects and labels autocomplete, and a CLI for scripts and agents",
   "kinds": [
     "overlay"
   ],

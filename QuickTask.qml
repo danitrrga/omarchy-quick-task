@@ -265,7 +265,6 @@ Item {
       Qt.callLater(function() { keyCatcher.forceActiveFocus() })
       return
     }
-    var taskName = root.draft
     root.draft = ""
     root.description = ""
     root.tokens = []
@@ -273,8 +272,7 @@ Item {
     root.dismiss()
     Quickshell.execDetached([
       root.omarchyPath + "/bin/omarchy-notification-send",
-      "Task added",
-      taskName
+      "Task added to Todoist"
     ])
   }
 

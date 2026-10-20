@@ -21,6 +21,49 @@ Add-only: it creates tasks and never reads or changes the ones you have.
 
 The images come from an invented account (`tools/screenshots.py`).
 
+## From a terminal or an agent
+
+The same parser is a command, so a script or an AI agent can send a task without opening anything:
+
+```sh
+quick-task add "Call Marta tomorrow 9am #Work @waiting p2" --note "ask about the lease"
+```
+
+```text
+Added: Call Marta (8401726593)
+  date: tomorrow 9am -> Wed 21 Oct, 09:00
+  project: #Work
+  label: @waiting
+  priority: p2
+```
+
+`quick-task parse "..."` shows how a sentence is read and adds nothing; `--json` prints the overlay's JSON instead of the plain lines. Success exits 0; a failure prints `error: ...` on stderr and exits 1 (with `--json`, `{"ok":false,"error":...}` on stdout). It is add-only, like the overlay.
+
+The installed command is `~/.config/omarchy/plugins/io.github.danitrrga.quick-task/helper/quick-task`. To have it on your `PATH` as `quick-task` (optional, nothing does this for you):
+
+```sh
+ln -s ~/.config/omarchy/plugins/io.github.danitrrga.quick-task/helper/quick-task ~/.local/bin/quick-task
+```
+
+It finds the token the same way the overlay does (`TODOIST_API_TOKEN` or `~/.config/tod.cfg`), so an agent running in your shell already has it.
+
+### Tell your agent
+
+Paste this into the `CLAUDE.md` or `AGENTS.md` of any project, or into an agent's instructions:
+
+```text
+## Todoist capture
+To add a task to my Todoist, run: quick-task add "<sentence>" [--note "<details>"]
+- Write the sentence as I would type it. Dates: tomorrow 9am, fri, 31 oct, lunes a las 9.
+  Project #Name, section /Name, label @name, priority p1 (urgent) to p4. Only the last
+  date, project, section and priority count. Reminders (!) and deadlines ({}) need Todoist Pro.
+- Unsure how a sentence is read? Run quick-task parse "<sentence>" first: it adds nothing.
+- Success prints "Added: <title> (<id>)" and exits 0: the task exists, never run it again.
+  A failure prints "error: ..." on stderr and exits 1: tell me, do not loop.
+- It only adds. It cannot list, edit or delete tasks. The sentence is sent to Todoist, so
+  put no secrets in it.
+```
+
 ## Install
 
 ```sh
@@ -104,7 +147,9 @@ Nothing else is sent anywhere. The token is never written to a log, an error mes
 Every command the plugin starts, nothing else:
 
 - `/usr/bin/python3 -I -B <plugin folder>/helper/quick-task parse|add|account|sync`, which makes the HTTPS requests above;
-- `<omarchy>/bin/omarchy-notification-send` after a task is added.
+- `<omarchy>/bin/omarchy-notification-send "Task added to Todoist"` after a task is added (the task text is never put in a command line).
+
+The plugin starts nothing else. `helper/quick-task` also runs when you or an agent call it from a terminal, and then makes the same requests to `api.todoist.com`.
 
 ## Development
 

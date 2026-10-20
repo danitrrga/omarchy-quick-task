@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- The marketplace card and detail image. Regenerate: chromium --headless=new --no-sandbox --hide-scrollbars
+       --window-size=1600,900 --screenshot=preview.png file://$PWD/tools/preview.html
+     The terminal text is the real output of `quick-task add` run against a stubbed Todoist (no account data). -->
+<meta charset="utf-8"><title>Quick Task preview</title>
+<style>
+  :root{--bg:#041224;--fg:#bcd8ec;--bright:#eef6fc;--muted:#5a86a8;--date:#5aaee0;--project:#8ad8f4;--label:#78c2d0;--priority:#cc8890;--line:#12304d;
+        --mono:'JetBrainsMono Nerd Font','JetBrains Mono',ui-monospace,monospace}
+  *{box-sizing:border-box;margin:0}
+  html,body{width:1600px;height:900px;background:var(--bg);font-family:var(--mono);color:var(--fg);overflow:hidden}
+  .wrap{position:relative;width:1600px;height:900px;padding:72px 96px 0;display:grid;grid-template-columns:590px minmax(0,1fr);column-gap:64px;align-items:center;
+        background:radial-gradient(1200px 700px at 92% 112%,#0c2a4a 0,transparent 62%),var(--bg)}
+  .rule{position:absolute;left:96px;right:96px;top:72px;height:1px;background:var(--line)}
+  .eyebrow{font-size:15px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-bottom:26px}
+  h1{font-size:104px;line-height:1;font-weight:600;letter-spacing:-.035em;color:var(--bright)}
+  .tag{margin-top:26px;font-size:30px;line-height:1.35;letter-spacing:-.01em}
+  .tag b{font-weight:500;color:var(--bright)}
+  ul{margin-top:56px;list-style:none;padding:0;font-size:22px;line-height:1.35}
+  li{display:flex;gap:18px;margin-bottom:22px}
+  li::before{content:"";flex:none;width:8px;height:8px;margin-top:11px;background:var(--date)}
+  li span{color:var(--bright)}
+  .right{display:flex;flex-direction:column;justify-content:center;gap:34px}
+  .shot{width:100%;border-radius:14px;display:block;box-shadow:0 24px 60px #0008}
+  .term{border:1px solid var(--line);border-radius:12px;background:#020b17;overflow:hidden}
+  .term .bar{padding:10px 18px;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+  .term pre{padding:22px 26px;font:inherit;font-size:18.5px;line-height:1.55;white-space:pre}
+  .prompt{color:var(--date)}.d{color:var(--date)}.p{color:var(--project)}.l{color:var(--label)}.x{color:var(--priority)}.m{color:var(--muted)}.o{color:var(--bright)}
+</style>
+<div class="wrap">
+  <div class="rule"></div>
+  <div>
+    <div class="eyebrow">Omarchy plugin &nbsp;·&nbsp; Todoist</div>
+    <h1>Quick Task</h1>
+    <p class="tag">Press a key, type a sentence, press <b>Enter</b>. Date, project, section, label and priority are read out of it.</p>
+    <ul>
+      <li><span>English and Spanish dates, live. <i class="m" style="font-style:normal">tomorrow 9am, lunes a las 9</i></span></li>
+      <li><span>Your own projects, sections and labels autocomplete.</span></li>
+      <li><span>A CLI for your terminal and your agents.</span></li>
+    </ul>
+  </div>
+  <div class="right">
+    <img class="shot" src="../docs/screenshots/ready.png" alt="">
+    <div class="term">
+      <div class="bar">terminal · or any agent</div>
+<pre><span class="prompt">❯</span> <span class="o">quick-task add</span> "Call Marta <span class="d">tomorrow 9am</span> <span class="p">#Work</span> <span class="l">@waiting</span> <span class="x">p2</span>"
+<span class="o">Added: Call Marta (8401726593)</span>
+<span class="m">  date: </span><span class="d">tomorrow 9am</span><span class="m"> -> Wed 21 Oct, 09:00</span>
+<span class="m">  project: </span><span class="p">#Work</span>
+<span class="m">  label: </span><span class="l">@waiting</span>
+<span class="m">  priority: </span><span class="x">p2</span></pre>
+    </div>
+  </div>
+</div>

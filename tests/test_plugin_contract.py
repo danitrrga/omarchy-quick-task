@@ -348,3 +348,12 @@ def test_the_move_hint_is_informational_so_it_is_not_dimmed_like_a_disabled_butt
 
     assert "interactive: false" in move and "enabled: false" not in move
     assert "enabled: root.enabled && root.interactive" in hint
+
+
+def test_success_notification_never_puts_the_task_text_in_a_command_line():
+    """argv is readable by every local user through ps, and the task text is private."""
+    source = QML.read_text(encoding="utf-8")
+    start = source.index("omarchy-notification-send")
+    call = source[source.rindex("execDetached", 0, start):source.index("])", start)]
+
+    assert "draft" not in call and "taskName" not in call
