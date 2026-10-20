@@ -12,6 +12,7 @@ Quick Task is a resident Omarchy overlay for sending a fully structured task to 
 4. Recognized details appear both as theme-aware inline marks and as compact chips below the sentence. The last occurrence of each detail type wins. With the cursor immediately after an active mark, the first `Backspace` makes every current occurrence of that type literal without deleting visible text; subsequent backspaces edit normally.
 5. During submission, the draft stays visible and the add action shows activity without changing size.
 6. Success dismisses the overlay and sends native Omarchy feedback. Failure keeps the full draft and shows a specific retryable error.
+7. `Ctrl + ,` swaps the task field for the token settings in the same card, and `Ctrl + ,` or `Esc` swaps it back (a second `Esc` closes the window). The settings show which source the token comes from (environment, saved, or `tod.cfg`) and whether Todoist accepts it. `Enter` sends the pasted token to the helper on stdin, Todoist must accept it before it is saved to `~/.config/quick-task/config.json` (mode `0600`), and a rejected token is refused with Todoist’s own message while the field keeps its text. The field is masked, and the token never appears in a command line, a log, an error or the IPC state.
 
 ## Recognition contract
 

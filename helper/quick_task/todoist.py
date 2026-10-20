@@ -25,20 +25,12 @@ def load_token(
     environ: Mapping[str, str] | None = None,
     config_path: Path | None = None,
 ) -> str:
-    source = os.environ if environ is None else environ
-    token = str(source.get("TODOIST_API_TOKEN", "")).strip()
-    if token:
-        return token
+    from .credentials import resolve_token  # credentials imports TodoistError from here
 
-    path = config_path or Path.home() / ".config" / "tod.cfg"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError):
-        payload = {}
-    token = str(payload.get("token", "")).strip() if isinstance(payload, dict) else ""
+    token, _source = resolve_token(os.environ if environ is None else environ, config_path)
     if not token:
         raise TodoistError(
-            "Todoist token not found. Set TODOIST_API_TOKEN or configure the existing tod client."
+            "Todoist token not found. Press Ctrl+, in Quick Task to add it, or run: quick-task token set"
         )
     return token
 

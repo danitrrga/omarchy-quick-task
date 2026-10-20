@@ -31,6 +31,29 @@ Item {
   // the coloured layer and the tints must follow, and positionToRectangle() does not notify.
   property real textOriginX: 0
 
+  // Settings replace the task field in the same card (Ctrl+,). The token only ever lives in tokenDraft
+  // until it is written to the helper's stdin; it is never in a command line, a log or the IPC state.
+  property bool settingsOpen: false
+  property string tokenDraft: ""
+  property string tokenSource: ""
+  property bool tokenOk: false
+  property string tokenError: ""
+  property bool tokenChecking: false
+  property bool tokenSaving: false
+  readonly property bool tokenBusy: root.tokenChecking || root.tokenSaving
+  readonly property string tokenLine: {
+    if (root.tokenBusy)
+      return "Checking with Todoist…"
+    if (root.tokenSource.length === 0)
+      return "No token yet. In Todoist open Settings, Integrations, Developer, copy your API token and paste it here."
+    var names = {
+      "environment": "TODOIST_API_TOKEN from your environment",
+      "saved": "the token saved by Quick Task",
+      "tod.cfg": "the token in your tod.cfg"
+    }
+    return "Using " + (names[root.tokenSource] || root.tokenSource) + (root.tokenOk ? ", accepted by Todoist." : ".")
+  }
+
   function syncTextOrigin() {
     root.textOriginX = keyCatcher.positionToRectangle(0).x
   }
@@ -53,7 +76,7 @@ Item {
     "menu", "border", root.border, Math.max(Style.spacing.hairline, Style.space(1)))
   readonly property int cardWidth: Math.min(Style.space(640), panel.width - Style.gapsOut * 2)
   readonly property int cardHeight: Math.min(
-    contentColumn.implicitHeight + root.contentPadding * 2,
+    (root.settingsOpen ? settingsColumn.implicitHeight : contentColumn.implicitHeight) + root.contentPadding * 2,
     panel.height - Style.gapsOut * 2)
 
   function open(payloadJson) {
@@ -67,6 +90,8 @@ Item {
     root.showDescription = root.description.length > 0
     root.showSyntax = false
     root.submitting = false
+    root.settingsOpen = false
+    root.tokenDraft = ""
     root.completion = null
     root.completionIndex = -1
     root.opened = true
@@ -88,6 +113,88 @@ Item {
   function toggle() {
     if (root.opened) root.dismiss()
     else root.open("{}")
+  }
+
+  function openSettings() {
+    root.settingsOpen = true
+    root.tokenDraft = ""
+    root.tokenError = ""
+    root.completion = null
+    root.completionIndex = -1
+    root.refreshTokenStatus()
+    Qt.callLater(function() { tokenField.forceActiveFocus() })
+  }
+
+  function closeSettings() {
+    root.settingsOpen = false
+    root.tokenDraft = ""
+    root.tokenError = ""
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function toggleSettings() {
+    if (root.settingsOpen) root.closeSettings()
+    else root.openSettings()
+  }
+
+  function refreshTokenStatus() {
+    if (tokenStatusProc.running) return
+    root.tokenChecking = true
+    tokenStatusProc.running = true
+  }
+
+  function handleTokenStatus(output) {
+    var parsed
+    try { parsed = JSON.parse(output || "") } catch (e) { parsed = null }
+    root.tokenChecking = false
+    if (!parsed) {
+      root.tokenOk = false
+      root.tokenError = "Quick Task could not read its helper’s answer."
+      return
+    }
+    root.tokenSource = parsed.source ? String(parsed.source) : ""
+    root.tokenOk = parsed.ok === true
+    root.tokenError = parsed.ok || !root.tokenSource ? "" : String(parsed.error || "")
+  }
+
+  function saveToken() {
+    var value = root.tokenDraft.trim()
+    if (value.length === 0 || root.tokenBusy) return
+    root.tokenError = ""
+    root.tokenSaving = true
+    tokenSetProc.pendingInput = value
+    tokenSetProc.running = true
+  }
+
+  function handleTokenSet(output) {
+    var parsed
+    try { parsed = JSON.parse(output || "") } catch (e) {
+      parsed = { ok: false, error: "Quick Task could not read its helper’s answer." }
+    }
+    root.tokenSaving = false
+    if (!parsed.ok) {
+      root.tokenError = String(parsed.error || "Todoist did not accept the token.")
+      Qt.callLater(function() { tokenField.forceActiveFocus() })
+      return
+    }
+    root.tokenDraft = ""
+    root.tokenSource = String(parsed.source || "")
+    if (root.tokenSource === "environment") {
+      // The saved token is kept, but the variable in the user's shell still wins: say so, stay here.
+      root.tokenOk = true
+      root.tokenError = "Saved. TODOIST_API_TOKEN is set in your environment and is still the one in use."
+      return
+    }
+    root.errorMessage = ""
+    root.accountNote = ""
+    root.closeSettings()
+    if (!syncProc.running) syncProc.running = true
+  }
+
+  function forgetToken() {
+    if (tokenClearProc.running || root.tokenBusy) return
+    root.tokenError = ""
+    tokenClearProc.running = true
   }
 
   function parsePayload() {
@@ -188,6 +295,17 @@ Item {
 
   // One key path for the real input and for the IPC test hooks. Returns true when it consumed the key.
   function handleKey(key, modifiers) {
+    if ((modifiers & Qt.ControlModifier) && key === Qt.Key_Comma) {
+      root.toggleSettings()
+      return true
+    }
+    if (root.settingsOpen) {
+      if (key === Qt.Key_Escape) {
+        root.closeSettings()
+        return true
+      }
+      return false
+    }
     var picker = root.completion
     var plain = !(modifiers & Qt.ShiftModifier)
     if (key === Qt.Key_Backspace) {
@@ -388,6 +506,52 @@ Item {
     }
   }
 
+  Process {
+    id: tokenStatusProc
+    command: root.helperCommand.concat(["token", "status", "--json"])
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.handleTokenStatus(text)
+    }
+  }
+
+  Process {
+    id: tokenSetProc
+    property string pendingInput: ""
+    stdinEnabled: true
+    command: root.helperCommand.concat(["token", "set", "--json"])
+    onStarted: {
+      write(pendingInput + "\n")
+      pendingInput = ""
+    }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.handleTokenSet(text)
+    }
+  }
+  // end tokenSetProc
+
+  Process {
+    id: tokenClearProc
+    command: root.helperCommand.concat(["token", "clear", "--json"])
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.refreshTokenStatus()
+    }
+  }
+
+  Timer {
+    interval: 12000
+    running: tokenSetProc.running || tokenStatusProc.running
+    onTriggered: {
+      tokenSetProc.running = false
+      tokenStatusProc.running = false
+      root.tokenSaving = false
+      root.tokenChecking = false
+      root.tokenError = "Todoist did not respond. Nothing was saved."
+    }
+  }
+
   // A sync that hangs must not block the next one: a Process that is still running cannot be relaunched.
   Timer {
     interval: 15000
@@ -440,6 +604,7 @@ Item {
 
       Column {
         id: contentColumn
+        visible: !root.settingsOpen
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
@@ -798,6 +963,15 @@ Item {
                 }
 
                 KeyHint {
+                  visible: root.completion === null
+                  key: "ctrl ,"
+                  label: "token"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: root.openSettings()
+                }
+
+                KeyHint {
                   key: "esc"
                   label: "close"
                   foreground: root.foreground
@@ -825,6 +999,150 @@ Item {
           }
         }
       }
+
+      Column {
+        id: settingsColumn
+        visible: root.settingsOpen
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.topMargin: card.contentTopInset
+        anchors.leftMargin: card.contentLeftInset
+        anchors.rightMargin: card.contentRightInset
+        spacing: Style.spacing.controlGap
+
+        Text {
+          width: parent.width
+          leftPadding: Style.spacing.xs
+          text: "Todoist token"
+          textFormat: Text.PlainText
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.heading
+          font.weight: Font.Medium
+        }
+
+        Text {
+          width: parent.width
+          leftPadding: Style.spacing.xs
+          rightPadding: Style.spacing.xs
+          text: root.tokenLine
+          textFormat: Text.PlainText
+          wrapMode: Text.Wrap
+          color: Color.muted
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        QQC.TextField {
+          id: tokenField
+          width: parent.width
+          text: root.tokenDraft
+          enabled: !root.tokenSaving
+          echoMode: TextInput.Password
+          placeholderText: "Paste your API token"
+          color: root.foreground
+          placeholderTextColor: Color.muted
+          selectionColor: Style.selectionFillFor(root.foreground, Color.accent)
+          selectedTextColor: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          leftPadding: Style.spacing.xs
+          rightPadding: Style.spacing.xs
+          topPadding: Style.spacing.inputPaddingY
+          bottomPadding: Style.spacing.inputPaddingY
+          background: Item {
+            Rectangle {
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.bottom: parent.bottom
+              height: Math.max(1, Style.spacing.hairline)
+              color: tokenField.activeFocus
+                ? Color.accent
+                : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.2)
+            }
+          }
+          onTextEdited: root.tokenDraft = text
+          onAccepted: root.saveToken()
+          Keys.onEscapePressed: root.closeSettings()
+          Keys.onPressed: function(event) {
+            if (root.handleKey(event.key, event.modifiers))
+              event.accepted = true
+          }
+        }
+        // end tokenField
+
+        Text {
+          width: parent.width
+          visible: root.tokenError.length > 0
+          leftPadding: Style.spacing.xs
+          rightPadding: Style.spacing.xs
+          text: root.tokenError
+          textFormat: Text.PlainText
+          wrapMode: Text.Wrap
+          color: root.tokenError.indexOf("Saved.") === 0 ? Color.muted : Color.urgent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+        }
+
+        Rectangle {
+          width: parent.width
+          height: Math.max(1, Style.spacing.hairline)
+          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+        }
+
+        Item {
+          width: parent.width
+          height: Math.max(forgetText.implicitHeight, settingsHints.implicitHeight)
+
+          Text {
+            id: forgetText
+            anchors.left: parent.left
+            anchors.leftMargin: Style.spacing.xs
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.tokenSource === "saved"
+            text: "forget saved token"
+            textFormat: Text.PlainText
+            color: forgetMouse.containsMouse ? Color.urgent : Color.muted
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+
+            MouseArea {
+              id: forgetMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.forgetToken()
+            }
+          }
+
+          Row {
+            id: settingsHints
+            anchors.right: parent.right
+            anchors.rightMargin: Style.spacing.xs
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(10)
+
+            KeyHint {
+              key: "esc"
+              label: "back"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.closeSettings()
+            }
+
+            KeyHint {
+              key: "enter"
+              label: root.tokenSaving ? "checking…" : "save"
+              accent: true
+              enabled: root.tokenDraft.trim().length > 0 && !root.tokenBusy
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.saveToken()
+            }
+          }
+        }
+      }
     }
   }
 
@@ -845,8 +1163,14 @@ Item {
         down: Qt.Key_Down, up: Qt.Key_Up, tab: Qt.Key_Tab, enter: Qt.Key_Return,
         escape: Qt.Key_Escape, backspace: Qt.Key_Backspace
       }
-      root.handleKey(keys[name], 0)
+      if (name === "ctrl_comma") root.handleKey(Qt.Key_Comma, Qt.ControlModifier)
+      else root.handleKey(keys[name], 0)
     }
+    function settings(on: bool): void { if (on !== root.settingsOpen) root.toggleSettings() }
+    // Test hooks for the token form. The value goes through an argument, so only use a throwaway one.
+    function tokenType(text: string): void { root.tokenDraft = text }
+    function saveToken(): void { root.saveToken() }
+    function forgetToken(): void { root.forgetToken() }
     function submit(): void { root.submit() }
     function pick(index: int): void {
       if (root.completion) root.applyCompletionItem(root.completion.items[index])
@@ -872,7 +1196,14 @@ Item {
         accountPremium: root.account.premium === true,
         accountNote: root.accountNote,
         submitting: root.submitting,
-        error: root.errorMessage
+        error: root.errorMessage,
+        settingsOpen: root.settingsOpen,
+        tokenSource: root.tokenSource,
+        tokenOk: root.tokenOk,
+        tokenLine: root.tokenLine,
+        tokenError: root.tokenError,
+        tokenBusy: root.tokenBusy,
+        tokenDraft: root.tokenDraft.length
       })
     }
   }

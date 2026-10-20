@@ -29,5 +29,5 @@ Test the UI through IPC: `omarchy-shell io.github.danitrrga.quick-task state|typ
 
 - Todoist's `/tasks/quick` `note` creates a *comment*; the task description is set by id (`set_description`). Probed live 2026-10-20.
 - A test is not evidence until it has been seen to fail: mutate the code, watch the test go red.
-- The Todoist token is read from the user's `tod` config; never put it in an error message, a log or argv.
+- The Todoist token comes from `TODOIST_API_TOKEN`, then the file Quick Task saves (`~/.config/quick-task/config.json`, written by `Ctrl+,` or `quick-task token set`), then the `tod` config (`helper/quick_task/credentials.py`). It never goes in an error message, a log, argv or the IPC state: the overlay writes it to the helper's stdin, one line (`readline`, because the overlay never closes the pipe), and `token set` refuses it as an argument.
 - Bilingual input (English and Spanish date words) is the point: change one language's rules and the other's tests must still pass.

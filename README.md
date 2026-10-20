@@ -45,7 +45,15 @@ The installed command is `~/.config/omarchy/plugins/io.github.danitrrga.quick-ta
 ln -s ~/.config/omarchy/plugins/io.github.danitrrga.quick-task/helper/quick-task ~/.local/bin/quick-task
 ```
 
-It finds the token the same way the overlay does (`TODOIST_API_TOKEN` or `~/.config/tod.cfg`), so an agent running in your shell already has it.
+It finds the token the same way the overlay does (see [Connect Todoist](#connect-todoist)), so an agent running in your shell usually already has it. To set one up from a terminal or script, pipe it in; it is never taken as an argument, because every user on the machine can read arguments:
+
+```sh
+printf %s "$TOKEN" | quick-task token set     # checks it with Todoist, then saves it (mode 0600)
+quick-task token status                       # which source is in use, and whether Todoist accepts it
+quick-task token clear                        # forget the saved one
+```
+
+`token status` never prints the token.
 
 ### Tell your agent
 
@@ -62,6 +70,9 @@ To add a task to my Todoist, run: quick-task add "<sentence>" [--note "<details>
   A failure prints "error: ..." on stderr and exits 1: tell me, do not loop.
 - It only adds. It cannot list, edit or delete tasks. The sentence is sent to Todoist, so
   put no secrets in it.
+- If it says the token is missing or rejected, tell me. Check with quick-task token status.
+  Only run quick-task token set with a token I gave you for this, piped in on stdin, never as
+  an argument or written to a file.
 ```
 
 ## Install
@@ -74,7 +85,15 @@ Needs the system `python3` at `/usr/bin/python3` (standard library only, no pack
 
 ### Connect Todoist
 
-Create a personal API token in Todoist under Settings → Integrations → Developer. Quick Task reads it from the `TODOIST_API_TOKEN` environment variable of the shell, or from the `token` field of `~/.config/tod.cfg` (the config file of the [`tod`](https://github.com/alanvardy/tod) client, JSON). Keep that file mode `0600`.
+Create a personal API token in Todoist under Settings → Integrations → Developer, open Quick Task, press `Ctrl` `,` and paste it. `Enter` asks Todoist whether it accepts the token and saves it only if it does, in `~/.config/quick-task/config.json` (mode `0600`). `Esc` goes back to the task field.
+
+Quick Task looks for a token in this order, and the first one found is used:
+
+1. the `TODOIST_API_TOKEN` environment variable of the shell;
+2. the token saved by `Ctrl` `,` (or by `quick-task token set`);
+3. the `token` field of `~/.config/tod.cfg`, the config file of the [`tod`](https://github.com/alanvardy/tod) client (JSON, keep it mode `0600`).
+
+The settings view says which one is in use. "forget saved token" there, or `quick-task token clear`, removes the saved one.
 
 ### Open it with a key
 
@@ -91,7 +110,7 @@ o.bind("SUPER + SHIFT + SEMICOLON", "Quick task (Todoist)", "omarchy-shell shell
 omarchy plugin remove io.github.danitrrga.quick-task
 ```
 
-Then delete the binding and, to erase what it cached, `~/.cache/quick-task/`.
+Then delete the binding and, to erase what it stored, `~/.cache/quick-task/` (account names) and `~/.config/quick-task/` (the saved token).
 
 ## Using it
 
@@ -104,6 +123,7 @@ Then delete the binding and, to erase what it cached, `~/.cache/quick-task/`.
 | `⇧` `↓` | show the syntax reminder |
 | `Esc` | close the list; a second `Esc` closes the window |
 | `Backspace` | right after a coloured word: keep that word as plain text |
+| `Ctrl` `,` | open or close the token settings (`Esc` also goes back) |
 
 Click any item on the detail line to keep it as plain text too. After a task is added the window closes and a notification confirms it.
 
@@ -140,13 +160,13 @@ Nothing else is sent anywhere. The token is never written to a log, an error mes
 ## What it stores
 
 - `~/.cache/quick-task/account.json` (mode `0600`): the names and ids of your projects, sections, labels and collaborators, refreshed in the background when older than five minutes. No task is stored.
-- Your token stays where you keep it (`tod.cfg` or the environment); Quick Task only reads it.
+- `~/.config/quick-task/config.json` (mode `0600`, in a `0700` folder): the token, only if you saved one with `Ctrl` `,` or `quick-task token set`. Your `tod.cfg` and your environment are only ever read.
 
 ## What it runs
 
 Every command the plugin starts, nothing else:
 
-- `/usr/bin/python3 -I -B <plugin folder>/helper/quick-task parse|add|account|sync`, which makes the HTTPS requests above;
+- `/usr/bin/python3 -I -B <plugin folder>/helper/quick-task parse|add|account|sync|token`, which makes the HTTPS requests above (`token status` and `token set` ask `api.todoist.com` whether a token is accepted; `token set` and `token clear` write or delete the file above);
 - `<omarchy>/bin/omarchy-notification-send "Task added to Todoist"` after a task is added (the task text is never put in a command line).
 
 The plugin starts nothing else. `helper/quick-task` also runs when you or an agent call it from a terminal, and then makes the same requests to `api.todoist.com`.

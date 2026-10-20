@@ -290,3 +290,149 @@ def test_a_failed_description_is_a_warning_because_the_task_already_exists():
     assert code == 0
     assert out.splitlines()[0] == "Added: Call Marta (task-9)"
     assert err.startswith("warning: Added, but could not save the description")
+
+
+TOKEN = "fake-api-token-for-tests"
+
+
+def token_env(tmp_path, **extra):
+    return {"XDG_CONFIG_HOME": str(tmp_path), "QUICK_TASK_TOD_CONFIG": str(tmp_path / "no-tod.cfg"), **extra}
+
+
+def user_opener(seen):
+    def opener(request, *, timeout):
+        seen.append((request.full_url, request.get_header("Authorization")))
+        return _Response(b'{"id":"1","is_premium":true}')
+
+    return opener
+
+
+def test_token_set_reads_stdin_verifies_with_todoist_and_saves_it_privately(tmp_path):
+    seen = []
+
+    code, out, err = run_argv(
+        ["token", "set", "--json"],
+        environ=token_env(tmp_path),
+        opener=user_opener(seen),
+        stdin_text=TOKEN + "\n",
+    )
+
+    saved = tmp_path / "quick-task" / "config.json"
+    assert code == 0
+    assert json.loads(out) == {"ok": True, "saved": True, "source": "saved"}
+    assert seen == [("https://api.todoist.com/api/v1/user", f"Bearer {TOKEN}")]
+    assert json.loads(saved.read_text()) == {"token": TOKEN}
+    assert TOKEN not in out + err
+
+
+def test_token_set_refuses_a_token_todoist_rejects_and_saves_nothing(tmp_path):
+    def opener(request, *, timeout):
+        raise HTTPError(request.full_url, 401, "no", {}, None)
+
+    code, out, err = run_argv(["token", "set"], environ=token_env(tmp_path), opener=opener, stdin_text=TOKEN)
+
+    assert code == 1
+    assert err == "error: Todoist rejected the API token.\n"
+    assert not (tmp_path / "quick-task").exists()
+    assert TOKEN not in out + err
+
+
+def test_token_set_refuses_a_token_given_as_an_argument_because_argv_is_public(tmp_path):
+    code, out, err = run_argv(["token", "set", TOKEN], environ=token_env(tmp_path), opener=user_opener([]))
+
+    assert code == 1
+    assert "pipe it in" in err
+    assert TOKEN not in out + err
+    assert not (tmp_path / "quick-task").exists()
+
+
+def test_token_set_says_when_the_environment_will_keep_winning(tmp_path):
+    code, out, _err = run_argv(
+        ["token", "set", "--json"],
+        environ=token_env(tmp_path, TODOIST_API_TOKEN="from-env"),
+        opener=user_opener([]),
+        stdin_text=TOKEN,
+    )
+
+    assert code == 0
+    assert json.loads(out) == {"ok": True, "saved": True, "source": "environment"}
+
+
+def test_token_status_names_the_source_and_never_prints_the_token(tmp_path):
+    run_argv(["token", "set"], environ=token_env(tmp_path), opener=user_opener([]), stdin_text=TOKEN)
+
+    code, out, err = run_argv(["token", "status"], environ=token_env(tmp_path), opener=user_opener([]))
+
+    assert code == 0
+    assert out.startswith("Token: saved")
+    assert "accepted by Todoist" in out
+    assert TOKEN not in out + err
+
+    code, out, _err = run_argv(["token", "status", "--json"], environ=token_env(tmp_path), opener=user_opener([]))
+    assert json.loads(out) == {"ok": True, "source": "saved", "premium": True}
+
+
+def test_token_status_without_a_token_exits_one_and_says_how_to_add_one(tmp_path):
+    code, out, err = run_argv(["token", "status"], environ=token_env(tmp_path), opener=user_opener([]))
+
+    assert code == 1
+    assert out == ""
+    assert "No Todoist token" in err and "quick-task token set" in err
+
+
+def test_token_status_reports_a_rejected_token_with_its_source(tmp_path):
+    def opener(request, *, timeout):
+        raise HTTPError(request.full_url, 401, "no", {}, None)
+
+    code, out, _err = run_argv(
+        ["token", "status", "--json"],
+        environ=token_env(tmp_path, TODOIST_API_TOKEN="stale"),
+        opener=opener,
+    )
+
+    assert code == 1
+    assert json.loads(out) == {"ok": False, "source": "environment", "error": "Todoist rejected the API token."}
+
+
+def test_token_clear_removes_only_the_saved_token(tmp_path):
+    run_argv(["token", "set"], environ=token_env(tmp_path), opener=user_opener([]), stdin_text=TOKEN)
+
+    code, out, _err = run_argv(["token", "clear", "--json"], environ=token_env(tmp_path))
+
+    assert code == 0
+    assert json.loads(out) == {"ok": True, "source": None}
+    assert not (tmp_path / "quick-task" / "config.json").exists()
+
+
+def test_a_missing_token_error_points_at_both_ways_to_add_one(tmp_path):
+    code, _out, err = run_argv(["add", "x"], environ=token_env(tmp_path), opener=user_opener([]))
+
+    assert code == 1
+    assert "Ctrl+," in err and "quick-task token set" in err
+
+
+def test_token_set_reads_one_line_because_the_overlay_never_closes_the_pipe(tmp_path):
+    class OpenPipe:
+        """A stdin that, like the overlay's Process, has a line but no end of file."""
+
+        def isatty(self):
+            return False
+
+        def readline(self, _limit=-1):
+            return TOKEN + "\n"
+
+        def read(self, _limit=-1):
+            raise AssertionError("waiting for end of input would hang the overlay")
+
+    stdout = StringIO()
+    code = main(
+        ["token", "set", "--json"],
+        stdin=OpenPipe(),
+        stdout=stdout,
+        stderr=StringIO(),
+        environ=token_env(tmp_path),
+        opener=user_opener([]),
+    )
+
+    assert code == 0
+    assert json.loads(stdout.getvalue())["saved"] is True

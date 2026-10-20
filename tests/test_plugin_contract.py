@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -70,13 +71,13 @@ def test_escape_dismisses_the_overlay_from_the_description_too():
 def test_parse_and_add_cross_the_process_boundary_over_stdin_not_argv():
     source = QML.read_text(encoding="utf-8")
 
-    assert source.count("stdinEnabled: true") == 2
+    assert source.count("stdinEnabled: true") == 3  # parse, add, token set
     assert 'command: root.helperCommand.concat(["parse"])' in source
     assert 'command: root.helperCommand.concat(["add"])' in source
     assert source.count("write(") >= 2
     assert "JSON.stringify" in source
     assert "Authorization" not in source
-    assert "TODOIST_API_TOKEN" not in source
+    assert 'env("TODOIST_API_TOKEN")' not in source  # the QML never reads the token from the environment
 
 
 def test_live_recognition_and_submit_states_are_present():
@@ -143,11 +144,11 @@ def test_empty_capture_is_one_quiet_field_instead_of_a_debug_form():
 
 def test_the_footer_is_agenda_style_keycaps_with_a_status_on_the_left_and_enter_as_the_primary():
     source = QML.read_text(encoding="utf-8")
-    footer = source[source.index("id: actionRow"):source.index("IpcHandler {")]
+    footer = source[source.index("id: actionRow"):source.index("id: settingsColumn")]
     root = Path(__file__).parents[1]
 
-    assert footer.count("KeyHint {") == 5
-    for key in ('key: "enter"', 'key: "↑ ↓"', 'key: "↓"', 'key: "⇧ ↓"', 'key: "esc"'):
+    assert footer.count("KeyHint {") == 6
+    for key in ('key: "enter"', 'key: "↑ ↓"', 'key: "↓"', 'key: "⇧ ↓"', 'key: "ctrl ,"', 'key: "esc"'):
         assert key in footer
     assert footer.index('key: "esc"') < footer.index('key: "enter"')
     assert "text: root.syncStatus" in footer
@@ -282,7 +283,8 @@ def test_the_ipc_state_never_exposes_the_token_or_the_account_contents():
     source = QML.read_text(encoding="utf-8")
     state = source[source.index("function state(): string"):]
 
-    assert "token" not in state.lower().replace("tokens", "")
+    assert not re.findall(r"root\.tokenDraft(?!\.length)", state)  # how long a typed token is, never what it is
+    assert "root.tokenDraft.length" in state and "pendingInput" not in state
     assert "collaborators" not in state
     assert "email" not in state
     assert "root.account.projects.length" in state
@@ -309,7 +311,7 @@ def test_the_helper_never_writes_bytecode_into_the_watched_plugin_folder():
     source = QML.read_text(encoding="utf-8")
 
     assert '["/usr/bin/python3", "-I", "-B", root.helperScript]' in source
-    assert source.count("root.helperCommand.concat(") == 4
+    assert source.count("root.helperCommand.concat(") == 7
     assert "/usr/bin/python3" not in source.replace('["/usr/bin/python3", "-I", "-B", root.helperScript]', "")
 
 
@@ -357,3 +359,37 @@ def test_success_notification_never_puts_the_task_text_in_a_command_line():
     call = source[source.rindex("execDetached", 0, start):source.index("])", start)]
 
     assert "draft" not in call and "taskName" not in call
+
+
+def _block(source: str, start_marker: str, end_marker: str) -> str:
+    start = source.index(start_marker)
+    return source[start:source.index(end_marker, start)]
+
+
+def test_ctrl_comma_opens_settings_through_the_one_key_path_the_tests_also_use():
+    source = QML.read_text(encoding="utf-8")
+    handler = _block(source, "function handleKey(", "function submit(")
+
+    assert "Qt.ControlModifier" in handler and "Qt.Key_Comma" in handler
+    assert "root.toggleSettings()" in handler
+    assert "ctrl_comma" in source  # the IPC key hook reaches it too
+
+
+def test_the_token_field_is_masked_and_escape_goes_back_instead_of_closing_the_window():
+    source = QML.read_text(encoding="utf-8")
+    field = _block(source, "id: tokenField", "// end tokenField")
+
+    assert "echoMode: TextInput.Password" in field
+    assert "Keys.onEscapePressed: root.closeSettings()" in field
+    assert "onAccepted: root.saveToken()" in field
+
+
+def test_the_token_reaches_the_helper_only_through_stdin():
+    source = QML.read_text(encoding="utf-8")
+    process = _block(source, "id: tokenSetProc", "// end tokenSetProc")
+
+    assert 'command: root.helperCommand.concat(["token", "set", "--json"])' in process
+    assert "tokenDraft" not in process.split("onStarted")[0]  # nothing before the write puts it in argv
+    for line in source.splitlines():
+        if "helperCommand" in line:
+            assert "tokenDraft" not in line and "pendingInput" not in line
